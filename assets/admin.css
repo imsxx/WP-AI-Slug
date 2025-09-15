@@ -1,0 +1,42 @@
+.bai-slug-settings .card,
+.bai-slug-bulk .card {
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  border-radius: 4px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.bgi-log {
+  max-height: 260px;
+  overflow: auto;
+  background: #fafafa;
+  border: 1px solid #eee;
+  padding: 10px;
+}
+#bai-test-result { margin-top: 10px; }
+
+/* 更宽的面板与表格布局优化 */
+.bai-slug-settings .bai-tab { max-width: 1200px; }
+.bai-slug-settings .card { overflow: visible; }
+.bai-slug-settings .form-table { width: 100%; }
+.bai-slug-settings .form-table th { width: 220px; vertical-align: top; }
+.bai-slug-settings .form-table td { width: auto; }
+.bai-slug-settings .widefat { width: 100%; }
+.bai-slug-settings .tablenav .tablenav-pages { margin: 8px 0; }
+.bai-slug-settings .bgi-log { max-height: 360px; }
+
+/* Manage table single-line + ellipsis for long fields */
+.bai-slug-manage table.widefat .col-title .text,
+.bai-slug-manage table.widefat .col-slug .text,
+.bai-slug-manage table.widefat .col-slug code,
+.bai-slug-manage table.widefat .col-status code {
+  display: inline-block;
+  max-width: 640px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bai-slug-manage table.widefat td.col-title,
+.bai-slug-manage table.widefat td.col-slug,
+.bai-slug-manage table.widefat td.col-proposed { vertical-align: middle; }
