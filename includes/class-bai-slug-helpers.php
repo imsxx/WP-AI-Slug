@@ -52,6 +52,25 @@ class BAI_Slug_Helpers {
         return $map;
     }
 
+    public static function glossary_hint( $title, $settings ) {
+        if ( empty( $settings['use_glossary'] ) || empty( $settings['glossary_text'] ) ) {
+            return '';
+        }
+        $map = self::parse_glossary_lines( $settings['glossary_text'] );
+        if ( empty( $map ) ) { return ''; }
+        $title = (string) $title;
+        $hits = [];
+        foreach ( $map as $src => $dst ) {
+            if ( $src === '' || $dst === '' ) { continue; }
+            $pos = function_exists( 'mb_stripos' ) ? mb_stripos( $title, $src ) : stripos( $title, $src );
+            if ( $pos !== false ) { $hits[ $src ] = $dst; }
+        }
+        if ( empty( $hits ) ) { return ''; }
+        $pairs = [];
+        foreach ( $hits as $k => $v ) { $pairs[] = $k . ' => ' . $v; }
+        return 'If the title contains these terms, use exact translations: ' . implode( '; ', $pairs ) . '.';
+    }
+
     public static function request_slug( $title, $settings ) {
         $endpoint = self::build_endpoint( $settings );
         $api_key  = (string) ( $settings['api_key'] ?? '' );
@@ -64,20 +83,7 @@ class BAI_Slug_Helpers {
         $prompt = sprintf( 'Translate the following title into a concise English slug (1-4 words), lowercase, spaces to hyphens, do not exceed %d characters. Output slug only: "%s"', $max_chars, $title );
 
         $messages = [];
-        $glossary_tip = '';
-        if ( ! empty( $settings['use_glossary'] ) && ! empty( $settings['glossary_text'] ) ) {
-            $map = self::parse_glossary_lines( $settings['glossary_text'] );
-            $hit = [];
-            foreach ( $map as $src => $dst ) {
-                if ( $src === '' || $dst === '' ) continue;
-                if ( mb_stripos( $title, $src ) !== false ) { $hit[ $src ] = $dst; }
-            }
-            if ( $hit ) {
-                $pairs = [];
-                foreach ( $hit as $k => $v ) { $pairs[] = $k . ' => ' . $v; }
-                $glossary_tip = 'If the title contains these terms, use exact translations: ' . implode( '; ', $pairs ) . '.';
-            }
-        }
+        $glossary_tip = self::glossary_hint( $title, $settings );
         $custom_system = isset( $settings['system_prompt'] ) ? trim( (string) $settings['system_prompt'] ) : '';
         if ( $custom_system === '' ) {
             $system_rule = 'You are a URL slug generator. Return only a single English URL slug. '

@@ -12,7 +12,7 @@ delete_option( 'bai_slug_terms_ids' );
 
 // 清理队列分块选项
 global $wpdb;
-$like = esc_sql( 'bai_slug_queue_chunk_' ) . '%';
+$like = $wpdb->esc_like( 'bai_slug_queue_chunk_' ) . '%';
 $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) );
 
 // 清理计划任务

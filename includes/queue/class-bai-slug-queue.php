@@ -154,7 +154,7 @@ class BAI_Slug_Queue {
     private static function reset_job_and_queue() {
         // Delete chunks
         global $wpdb;
-        $like = esc_sql( self::CHUNK_PREFIX ) . '%';
+        $like = $wpdb->esc_like( self::CHUNK_PREFIX ) . '%';
         $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) );
         delete_option( self::OPTION_JOB );
         // Also clear cron schedule
@@ -163,7 +163,7 @@ class BAI_Slug_Queue {
 
     private static function count_chunks() {
         global $wpdb;
-        $like = esc_sql( self::CHUNK_PREFIX ) . '%';
+        $like = $wpdb->esc_like( self::CHUNK_PREFIX ) . '%';
         $sql  = $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE %s", $like );
         return (int) $wpdb->get_var( $sql );
     }
@@ -326,11 +326,9 @@ class BAI_Slug_Queue {
 
         // Build messages per scheme
         $messages = [];
-        $glossary_tip = '';
-        if ( ! empty( $settings['use_glossary'] ) && ! empty( $settings['glossary_text'] ) && class_exists( 'BAI_Slug_Helpers' ) ) {
-            // reuse glossary hit computation via helpers (simplify: append as hint)
-            $glossary_tip = 'Observe glossary if applicable.';
-        }
+        $glossary_tip = ( class_exists( 'BAI_Slug_Helpers' ) && method_exists( 'BAI_Slug_Helpers', 'glossary_hint' ) )
+            ? BAI_Slug_Helpers::glossary_hint( $post->post_title, $settings )
+            : '';
         $max_chars = max( 10, (int) ( $settings['slug_max_chars'] ?? 60 ) );
         $custom_system = isset( $settings['system_prompt'] ) ? trim( (string) $settings['system_prompt'] ) : '';
         if ( $custom_system === '' ) {
