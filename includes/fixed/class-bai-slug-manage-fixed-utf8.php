@@ -42,7 +42,7 @@ class BAI_Slug_Manage_Fixed {
     public function render() {
         if ( ! current_user_can( 'manage_options' ) ) return;
 
-        $post_type = sanitize_text_field( $_GET['post_type'] ?? 'post' );
+        $post_type = sanitize_text_field( $_GET['ptype'] ?? ( $_GET['post_type'] ?? 'post' ) );
         $attr      = sanitize_text_field( $_GET['attr'] ?? '' );
         $paged     = max( 1, intval( $_GET['paged'] ?? 1 ) );
         $per_page  = 20;
@@ -68,7 +68,7 @@ class BAI_Slug_Manage_Fixed {
             $query,
             $paged,
             admin_url( 'options-general.php' ),
-            [ 'page' => 'bai-slug-manage', 'post_type' => $post_type, 'attr' => $attr ]
+            [ 'page' => 'bai-slug-manage', 'ptype' => $post_type, 'attr' => $attr ]
         );
         echo '<p class="description">' . esc_html( BAI_Slug_I18n::t('manual_desc') ) . '</p>';
         echo '</div>';
@@ -77,7 +77,7 @@ class BAI_Slug_Manage_Fixed {
     public function render_inner() {
         if ( ! current_user_can( 'manage_options' ) ) return;
 
-        $post_type = sanitize_text_field( $_GET['post_type'] ?? 'post' );
+        $post_type = sanitize_text_field( $_GET['ptype'] ?? ( $_GET['post_type'] ?? 'post' ) );
         $attr      = sanitize_text_field( $_GET['attr'] ?? '' );
         $paged     = max( 1, intval( $_GET['paged'] ?? 1 ) );
         $per_page  = 20;
@@ -111,7 +111,7 @@ class BAI_Slug_Manage_Fixed {
             [
                 'page' => 'bai-slug-settings',
                 'active_tab' => 'tab-manual',
-                'post_type' => $post_type,
+                'ptype' => $post_type,
                 'attr' => $attr,
             ]
         );
@@ -144,7 +144,7 @@ class BAI_Slug_Manage_Fixed {
         foreach ( $hidden as $key => $value ) {
             echo '<input type="hidden" name="' . esc_attr( $key ) . '" value="' . esc_attr( $value ) . '" />';
         }
-        echo '<label>' . esc_html( BAI_Slug_I18n::t('label_post_types') ) . ' <select name="post_type">';
+        echo '<label>' . esc_html( BAI_Slug_I18n::t('label_post_types') ) . ' <select name="ptype">';
         foreach ( $pts as $pt => $obj ) {
             echo '<option value="' . esc_attr( $pt ) . '"' . selected( $post_type, $pt, false ) . '>' . esc_html( $obj->labels->singular_name ) . '</option>';
         }
