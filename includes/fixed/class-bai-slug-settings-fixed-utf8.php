@@ -416,22 +416,26 @@ class BAI_Slug_Settings {
         echo '</div>'; // tab-basic
 
         echo '<div id="tab-glossary" class="bai-tab" style="display:none">';
-        echo '<form method="post" enctype="multipart/form-data" action="' . esc_url( admin_url( 'admin-ajax.php' ) ) . '">';
+        echo '<form method="post">';
         wp_nonce_field( 'bai_slug_settings' );
         echo '<table class="form-table">';
         echo '<tr><th>启用术语表</th><td><label><input type="checkbox" name="use_glossary" value="1" ' . checked( ! empty( $opt['use_glossary'] ), true, false ) . ' /> 启用</label></td></tr>';
         echo '<tr><th>术语表内容</th><td><textarea id="bai-glossary-text" name="glossary_text" rows="12" class="large-text" placeholder="中文=English\n关键词|Another\n魔法师-巫师-法师=Sorcerer">' . esc_textarea( $opt['glossary_text'] ) . '</textarea><p class="description">每行“源=译”或“源|译”。多个源词用“-”连接，保留连字符可写成 <code>\-</code>。仅在标题包含时提示模型使用准确翻译。</p></td></tr>';
-        echo '<tr><th>导入/导出</th><td>';
         $dl = esc_url( admin_url( 'admin-ajax.php?action=bai_glossary_export&nonce=' . urlencode( wp_create_nonce( 'bai_slug_test' ) ) ) );
-        echo '<p><a class="button" href="' . $dl . '">导出 CSV</a></p>';
-        echo '<p><label>导入 CSV：<input type="file" name="glossary_csv" accept=".csv" /></label> '
-            . '<input type="hidden" name="action" value="bai_glossary_import" />'
-            . '<input type="hidden" name="nonce" value="' . esc_attr( wp_create_nonce( 'bai_slug_test' ) ) . '" />'
-            . '<button type="submit" name="bai_glossary_import_btn" class="button">导入 CSV</button></p>';
-        echo '<p class="description">仅支持 CSV 文件导入，第一列为“源”，第二列为“译”。过长的术语表会占用更多服务器资源并增加 AI token 消耗，请仅保留必要术语。</p>';
-        echo '</td></tr>';
+        echo '<tr><th>导出 CSV</th><td><a class="button" href="' . $dl . '">导出 CSV</a></td></tr>';
         echo '</table>';
         submit_button( BAI_Slug_I18n::t('btn_save'), 'primary', 'bai_slug_save', false );
+        echo '</form>';
+
+        echo '<hr class="bai-glossary-divider" style="margin:24px 0;" />';
+        echo '<form method="post" enctype="multipart/form-data" action="' . esc_url( admin_url( 'admin-ajax.php' ) ) . '" class="bai-glossary-import">';
+        echo '<input type="hidden" name="action" value="bai_glossary_import" />';
+        echo '<input type="hidden" name="nonce" value="' . esc_attr( wp_create_nonce( 'bai_slug_test' ) ) . '" />';
+        echo '<table class="form-table"><tr><th scope="row">导入 CSV</th><td>';
+        echo '<label><input type="file" name="glossary_csv" accept=".csv" /></label> ';
+        echo '<button type="submit" name="bai_glossary_import_btn" class="button">导入 CSV</button>';
+        echo '<p class="description">仅支持 CSV 文件导入，第一列为“源”，第二列为“译”。过长的术语表会占用更多服务器资源并增加 AI token 消耗，请仅保留必要术语。</p>';
+        echo '</td></tr></table>';
         echo '</form>';
         echo '</div>'; // tab-glossary
 

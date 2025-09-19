@@ -167,7 +167,16 @@ jQuery(function($){
   }
   function fetchTerms(paged){ if(!$tbody.length) return; paged = paged || 1; $tbody.html('<tr><td colspan="8">加载中…</td></tr>'); api({ action:'bai_terms_list', nonce: BAISlug.nonce, tax: $taxSel.val()||'all', attr: $attrSel.val()||'', per_page: parseInt($perInp.val()||'20',10), paged: paged, s: ($('#bai-terms-search').val()||'') }).done(function(res){ if(res && res.success){ var data=res.data||{}; renderRows(data.items||[]); renderPager(parseInt(data.total||0,10), parseInt(data.per_page||20,10), parseInt(data.paged||1,10)); } else { $tbody.html('<tr><td colspan="8">'+(BAISlug.i18n.request_failed||'请求失败')+'</td></tr>'); } }).fail(function(){ $tbody.html('<tr><td colspan="8">'+(BAISlug.i18n.request_failed||'请求失败')+'</td></tr>'); }); }
   $('#bai-terms-refresh').on('click', function(){ fetchTerms(1); });
-  $('#bai-terms-tax, #bai-terms-attr').on('change', function(){ fetchTerms(1); });
+  var $termFilters = $('#bai-terms-tax, #bai-terms-attr');
+  $termFilters.each(function(){ $(this).data('baiLast', $(this).val()); });
+  $termFilters.on('focus', function(){ $(this).data('baiLast', $(this).val()); });
+  $termFilters.on('change', function(){
+    var $sel = $(this);
+    var val = $sel.val();
+    if($sel.data('baiLast') === val){ return; }
+    $sel.data('baiLast', val);
+    fetchTerms(1);
+  });
   $(document).on('keypress', '#bai-terms-search', function(e){ if(e.which===13){ e.preventDefault(); fetchTerms(1); } });
   $pager.on('click', 'a.page-numbers', function(){ var p=parseInt($(this).data('page')||'1',10); fetchTerms(p); });
   $(document).on('change', '#bai-terms-select-all, #bai-terms-select-all-top', function(){ var checked=$(this).is(':checked'); $('input.bai-term-select').prop('checked', checked); });

@@ -168,7 +168,16 @@ jQuery(function($){
     .done(function(res){ if(res && res.success){ var d=res.data||{}; renderPostsRows(d.items||[]); renderPostsPager(parseInt(d.total||0,10), parseInt(d.per_page||20,10), parseInt(d.paged||1,10)); } else { $postsTbody.html('<tr><td colspan="7">加载失败</td></tr>'); } })
     .fail(function(){ $postsTbody.html('<tr><td colspan="7">网络错误</td></tr>'); }); }
   $('#bai-posts-refresh').on('click', function(){ fetchPosts(1); });
-  $('#bai-posts-ptype, #bai-posts-attr').on('change', function(){ fetchPosts(1); });
+  var $postFilters = $('#bai-posts-ptype, #bai-posts-attr');
+  $postFilters.each(function(){ $(this).data('baiLast', $(this).val()); });
+  $postFilters.on('focus', function(){ $(this).data('baiLast', $(this).val()); });
+  $postFilters.on('change', function(){
+    var $sel = $(this);
+    var val = $sel.val();
+    if($sel.data('baiLast') === val){ return; }
+    $sel.data('baiLast', val);
+    fetchPosts(1);
+  });
   $(document).on('keypress', '#bai-posts-search', function(e){ if(e.which===13){ e.preventDefault(); fetchPosts(1); } });
   $postsPager.on('click', 'a.page-numbers', function(){ var p=parseInt($(this).data('page')||'1',10); fetchPosts(p); });
   if($postsTbody.length){ fetchPosts(1); }
