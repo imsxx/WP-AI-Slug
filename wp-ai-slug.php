@@ -3,7 +3,7 @@
  * Plugin Name: WP-AI-Slug
  * Plugin URI: https://imsxx.com
  * Description: 基于 haayal-ai-slug-translator 构建的整合增强插件（由 GPT‑4/5 协助开发）。支持自定义大模型服务（OpenAI、DeepSeek 或兼容端点）、一键测试连通性，以及异步批量为历史文章与术语生成英文 Slug。
- * Version: 1.0.0
+ * Version: 1.0
  * Author: 梦随乡兮
  * Author URI: https://imsxx.com
  * Text Domain: wp-ai-slug
@@ -15,7 +15,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'BAI_SLUG_VERSION', '1.0.0' );
+define( 'BAI_SLUG_VERSION', '1.0' );
 define( 'BAI_SLUG_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BAI_SLUG_URL', plugin_dir_url( __FILE__ ) );
 
