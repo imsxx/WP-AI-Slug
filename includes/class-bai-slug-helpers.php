@@ -34,31 +34,16 @@ class BAI_Slug_Helpers {
         return $msg;
     }
 
-    private static function parse_glossary_lines( $text ) {
-        $map   = [];
-        $lines = preg_split( "/\r?\n/", (string) $text );
-        foreach ( (array) $lines as $line ) {
-            $line = trim( (string) $line );
-            list( $src, $dst ) = self::split_glossary_pair( $line );
-            if ( $src === '' || $dst === '' ) { continue; }
-            foreach ( self::expand_glossary_sources( $src ) as $variant ) {
-                $map[ $variant ] = $dst;
     public static function glossary_hint( $title, $settings ) {
         if ( empty( $settings['use_glossary'] ) || empty( $settings['glossary_text'] ) ) {
             return '';
         }
-        $map = method_exists( __CLASS__, 'safe_parse_glossary_lines' ) ? self::safe_parse_glossary_lines( $settings['glossary_text'] ) : self::parse_glossary_lines( $settings['glossary_text'] );
+        $map = self::safe_parse_glossary_lines( $settings['glossary_text'] );
         if ( empty( $map ) ) { return ''; }
         $title = (string) $title;
         $hits  = [];
-        return 'If the title contains these terms, use exact translations: ' . implode( '; ', $pairs ) . '.';
-    }
-
-    public static function safe_parse_glossary_lines( $text ) {
-        $map   = [];
-        $text  = (string) $text;
-        if ( $text === '' ) { return $map; }
-        $lines = preg_split( "/\r?\n/", $text );
+        foreach ( $map as $src => $dst ) {
+            if ( $src === '' || $dst === '' ) { continue; }
         foreach ( (array) $lines as $line ) {
             $line = trim( (string) $line );
             if ( $line === '' ) { continue; }

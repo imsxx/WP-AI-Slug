@@ -664,12 +664,7 @@ class BAI_Slug_Settings {
         $opt = self::get_settings();
         $opt['glossary_text'] = implode( "\n", $lines );
         update_option( self::$option_name, $opt );
-        $count = 0;
-        if ( ! empty( $lines ) && method_exists( 'BAI_Slug_Helpers', 'safe_parse_glossary_lines' ) ) {
-            $count = count( BAI_Slug_Helpers::safe_parse_glossary_lines( implode( "\n", $lines ) ) );
-        } else {
-            $count = count( $lines );
-        }
+        $count = count( BAI_Slug_Helpers::safe_parse_glossary_lines( implode( "\n", $lines ) ) );
         $args = [ self::$glossary_notice_key => ( $count > 0 ? 'imported' : 'invalid' ) ];
         if ( $count > 0 ) {
             $args['glossary_count'] = $count;
