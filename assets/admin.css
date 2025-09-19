@@ -13,14 +13,27 @@
   border: 1px solid #eee;
   padding: 10px;
 }
+#tab-logs table.widefat td { word-break: break-all; white-space: normal; vertical-align: top; }
 #bai-test-result { margin-top: 10px; }
 
 /* 更宽的面板与表格布局优化 */
-.bai-slug-settings .bai-tab { max-width: 1200px; }
-.bai-slug-settings .card { overflow: visible; }
+.bai-slug-settings, .bai-slug-manage, .bai-slug-bulk { max-width: 1120px; margin: 0 auto; min-height: 100vh; overflow-y: auto; }
+.bai-slug-settings .bai-tab { max-width: 100%; }
+.bai-slug-settings .card,
+.bai-slug-manage .card,
+.bai-slug-bulk .card { overflow: visible; max-width: 100% !important; box-sizing: border-box; }
 .bai-slug-settings .form-table { width: 100%; }
-.bai-slug-settings .form-table th { width: 220px; vertical-align: top; }
+.bai-slug-settings .form-table th { width: 180px; vertical-align: top; }
 .bai-slug-settings .form-table td { width: auto; }
+/* 强制撑满宽度，覆盖 WP 默认 25em */
+.bai-slug-settings .form-table td > input[type="text"],
+.bai-slug-settings .form-table td > input[type="url"],
+.bai-slug-settings .form-table td > input[type="password"],
+.bai-slug-settings .form-table td > select,
+.bai-slug-settings .form-table td > textarea,
+.bai-slug-settings .form-table input.regular-text,
+.bai-slug-settings .form-table textarea.large-text { width: 100% !important; max-width: 860px; }
+.bai-slug-settings .form-table textarea.large-text { min-height: 120px; }
 .bai-slug-settings .widefat { width: 100%; }
 .bai-slug-settings .tablenav .tablenav-pages { margin: 8px 0; }
 .bai-slug-settings .bgi-log { max-height: 360px; }
@@ -30,13 +43,207 @@
 .bai-slug-manage table.widefat .col-slug .text,
 .bai-slug-manage table.widefat .col-slug code,
 .bai-slug-manage table.widefat .col-status code {
-  display: inline-block;
-  max-width: 640px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  max-height: calc(1.4em * 2 + 2px);
 }
 
 .bai-slug-manage table.widefat td.col-title,
 .bai-slug-manage table.widefat td.col-slug,
 .bai-slug-manage table.widefat td.col-proposed { vertical-align: middle; }
+
+.bai-manage-progress {
+  margin-left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bai-manage-progress .spinner {
+  float: none;
+  margin: 0;
+}
+.bai-manage-progress .text {
+  font-size: 13px;
+}
+.bai-manage-progress.is-error .text {
+  color: #d63638;
+}
+.bai-manage-progress.is-success .text {
+  color: #2271b1;
+}
+
+.bai-slug-manage .tablenav .pagination-links a,
+.bai-slug-manage .tablenav .pagination-links span {
+  font-size: 14px;
+  min-width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  height: 32px;
+  line-height: 20px;
+}
+.bai-slug-manage .tablenav .pagination-links { display:flex; flex-wrap:wrap; gap:6px; }
+.bai-slug-manage .tablenav .pagination-links a {
+  border: 1px solid #d5d8dc;
+  background: #fff;
+  border-radius: 2px;
+  text-decoration: none;
+}
+.bai-slug-manage .tablenav .pagination-links a:hover {
+  border-color: #2271b1;
+  color: #2271b1;
+}
+
+/* 文章类处理表格定宽，避免列因短内容偏移 */
+.bai-slug-manage table.widefat { table-layout: fixed; }
+.bai-slug-manage table.widefat th:nth-child(1),
+.bai-slug-manage table.widefat td:nth-child(1) { width: 26px; }
+.bai-slug-manage table.widefat th:nth-child(2),
+.bai-slug-manage table.widefat td:nth-child(2) { width: 80px; }
+.bai-slug-manage table.widefat th:nth-child(6),
+.bai-slug-manage table.widefat td:nth-child(6) { width: 120px; }
+.bai-slug-manage table.widefat th:nth-child(7),
+.bai-slug-manage table.widefat td:nth-child(7) { width: 120px; }
+.bai-slug-manage table.widefat .col-title { width: 40%; }
+.bai-slug-manage table.widefat .col-slug { width: 35%; }
+
+.column-bai_slug_tools {
+  width: 260px;
+}
+.bai-inline-slug {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bai-inline-slug .slug-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bai-inline-slug code {
+  background: #f6f7f7;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.bai-inline-slug input.slug-input {
+  max-width: 220px;
+}
+.bai-inline-slug .spinner {
+  margin: 0;
+}
+.bai-inline-slug .source-label {
+  font-size: 12px;
+  color: #646970;
+}
+
+.bai-slug-settings .bai-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.bai-slug-settings .bai-template-row input[type="text"]{ min-width:260px; flex:1 1 720px; width:auto; }
+.bai-slug-settings .bai-template-row .button{ height:auto; }
+.bai-slug-settings .bai-template-row .bai-template-select,
+.bai-slug-settings .bai-template-row input[type="text"] {
+  min-width: 260px;
+}
+.bai-slug-manage #bai-batch-toolbar {
+  border: 1px solid #ccd0d4;
+  background: #fff;
+}
+.bai-slug-manage #bai-batch-toolbar .actions .button { margin-right: 6px; }
+.bai-slug-manage #bai-batch-progress { margin: 8px 0 0; }
+.bai-inline-slug .slug-display {
+  display: inline-block;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hide legacy bulk tab if any remains */
+#bai-tabs a.nav-tab[href="#tab-bulk"],
+#tab-bulk { display: none !important; }
+
+/* 分类法处理布局优化 */
+#bai-terms-filters .filters label { display:inline-flex; align-items:center; gap:6px; }
+#bai-terms-filters .filters input[type="text"]{ width:260px; }
+#bai-terms-list table.widefat th,
+#bai-terms-list table.widefat td { vertical-align: middle; }
+#bai-terms-list .col-title .text,
+#bai-terms-list .col-proposed code,
+#bai-terms-list .col-slug code {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  max-height: calc(1.4em * 2 + 2px);
+}
+#bai-terms-list .col-actions .button { margin-right:6px; }
+/* 术语分页样式，避免超长一行 */
+#bai-terms-pagination { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 0; }
+#bai-terms-pagination .page-numbers { display:inline-flex; min-width:28px; height:28px; align-items:center; justify-content:center; padding:0 6px; border:1px solid #d5d8dc; background:#fff; border-radius:2px; text-decoration:none; }
+#bai-terms-pagination .page-numbers.current { background:#f0f0f1; border-color:#c3c4c7; }
+#bai-terms-pagination .page-numbers.dots { border:none; background:transparent; min-width:auto; height:auto; padding:0 2px; }
+
+/* 文章类处理分页样式（与分类法一致） */
+#bai-posts-pagination { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 0; }
+#bai-posts-pagination .page-numbers { display:inline-flex; min-width:28px; height:28px; align-items:center; justify-content:center; padding:0 6px; border:1px solid #d5d8dc; background:#fff; border-radius:2px; text-decoration:none; }
+#bai-posts-pagination .page-numbers.current { background:#f0f0f1; border-color:#c3c4c7; }
+#bai-posts-pagination .page-numbers.dots { border:none; background:transparent; min-width:auto; height:auto; padding:0 2px; }
+
+/* 设置页内的宽表格列做省略，避免内容撑破布局 */
+.bai-slug-settings table.widefat .col-title .text,
+.bai-slug-settings table.widefat .col-slug .text,
+.bai-slug-settings table.widefat .col-slug code,
+.bai-slug-settings table.widefat .col-status code {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  max-height: calc(1.4em * 2 + 2px);
+}
+
+/* 分类法处理表格定宽 */
+#bai-terms-list table.widefat { table-layout: fixed; }
+#bai-terms-list table.widefat th:first-child,
+#bai-terms-list table.widefat td:first-child { width: 28px; }
+#bai-terms-list table.widefat th:nth-child(2),
+#bai-terms-list table.widefat td:nth-child(2) { width: 80px; }
+#bai-terms-list table.widefat th:nth-child(4),
+#bai-terms-list table.widefat td:nth-child(4) { width: 140px; }
+#bai-terms-list table.widefat th:nth-child(6),
+#bai-terms-list table.widefat td:nth-child(6) { width: 100px; }
+#bai-terms-list table.widefat th:nth-child(8),
+#bai-terms-list table.widefat td:nth-child(8) { width: 180px; }
+
+/* 批处理进行中覆层 */
+/* 取消覆层：采用面板置灰防误操作 */
+.bai-slug-manage.is-processing #bai-batch-start,
+.bai-slug-manage.is-processing #bai-batch-reset,
+.bai-slug-manage.is-processing #bai-generate-selected,
+.bai-slug-manage.is-processing #bai-apply-selected,
+.bai-slug-manage.is-processing #bai-reject-selected,
+.bai-slug-manage.is-processing .bai-gen,
+.bai-slug-manage.is-processing .bai-accept,
+.bai-slug-manage.is-processing .bai-reject,
+.bai-slug-manage.is-processing .bai-edit,
+.bai-slug-manage.is-processing #bai-select-all,
+.bai-slug-manage.is-processing #bai-select-all-top,
+.bai-slug-manage.is-processing .bai-select,
+.bai-slug-manage.is-processing #bai-posts-ptype,
+.bai-slug-manage.is-processing #bai-posts-attr,
+.bai-slug-manage.is-processing #bai-posts-search,
+.bai-slug-manage.is-processing #bai-posts-per,
+.bai-slug-manage.is-processing #bai-posts-refresh { pointer-events: none; opacity: .6; }

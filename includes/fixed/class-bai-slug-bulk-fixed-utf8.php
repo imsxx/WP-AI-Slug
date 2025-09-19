@@ -8,14 +8,8 @@ class BAI_Slug_Bulk_Fixed {
     }
 
     public function add_menu() {
-        add_submenu_page(
-            'options-general.php',
-            BAI_Slug_I18n::t('bulk_title'),
-            BAI_Slug_I18n::t('bulk_title'),
-            'manage_options',
-            'bai-slug-bulk',
-            [ $this, 'render' ]
-        );
+        // Menu integrated into top-level WP-AI-Slug page tabs; no separate Settings submenu.
+        return;
     }
 
     public function enqueue( $hook ) {
@@ -30,7 +24,7 @@ class BAI_Slug_Bulk_Fixed {
                 'request_failed' => $zh ? '请求失败' : 'Request failed',
                 'done'           => $zh ? '已完成' : 'Done',
                 'network_error'  => BAI_Slug_I18n::t('network_error'),
-                'cursor_reset'   => $zh ? '游标已重置' : 'Cursor reset',
+                'cursor_reset'   => $zh ? '进度已重置' : 'Progress reset',
             ],
         ] );
     }
@@ -64,7 +58,8 @@ class BAI_Slug_Bulk_Fixed {
                     </td></tr>
                 </table>
                 <p>
-                    <label><input type="checkbox" id="bai-skip-ai" checked /> <?php echo esc_html( BAI_Slug_I18n::t('filter_skip_ai') ); ?></label>
+                    <label style="margin-right:12px"><input type="checkbox" id="bai-skip-ai" checked /> <?php echo esc_html( BAI_Slug_I18n::t('filter_skip_ai') ); ?></label>
+                    <label><input type="checkbox" id="bai-skip-user" checked /> <?php echo esc_html( BAI_Slug_I18n::t('filter_skip_user') ); ?></label>
                 </p>
                 <p>
                     <button class="button button-primary" id="bai-start"><?php echo esc_html( BAI_Slug_I18n::t('btn_start') ); ?></button>
@@ -94,13 +89,14 @@ class BAI_Slug_Bulk_Fixed {
                     </td></tr>
                 </table>
                 <p>
-                    <label><input type="checkbox" id="bai-terms-skip-ai" checked /> <?php echo esc_html( BAI_Slug_I18n::t('filter_skip_ai_terms') ); ?></label>
+                    <label style="margin-right:12px"><input type="checkbox" id="bai-terms-skip-ai" checked /> <?php echo esc_html( BAI_Slug_I18n::t('filter_skip_ai_terms') ); ?></label>
+                    <label><input type="checkbox" id="bai-terms-skip-user" checked /> <?php echo esc_html( BAI_Slug_I18n::t('filter_skip_user') ); ?></label>
                 </p>
                 <p>
                     <button class="button" id="bai-terms-start"><?php echo esc_html__( '开始处理术语', 'wp-ai-slug' ); ?></button>
                     <button class="button" id="bai-terms-reset"><?php echo esc_html__( '重置术语游标', 'wp-ai-slug' ); ?></button>
                 </p>
-                <p class="description"><?php echo esc_html__( '已处理', 'wp-ai-slug' ); ?>: <strong id="bai-terms-processed">0</strong> / <strong id="bai-terms-scanned">0</strong>；Cursor: <code id="bai-terms-cursor">0</code></p>
+                <p class="description"><?php echo esc_html__( '已处理', 'wp-ai-slug' ); ?>: <strong id="bai-terms-processed">0</strong> / <strong id="bai-terms-scanned">0</strong>；<?php echo esc_html( BAI_Slug_I18n::t('cursor') ); ?> <code id="bai-terms-cursor">0</code></p>
                 <div id="bai-log-terms" class="bgi-log"></div>
             </div>
         </div>
@@ -152,3 +148,4 @@ class BAI_Slug_Bulk_Fixed {
 }
 
 ?>
+

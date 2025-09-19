@@ -32,6 +32,7 @@ jQuery(function($){
       batch_size: parseInt($('#bai-batch-size').val()||'5',10),
       post_types: pts,
       skip_ai: $('#bai-skip-ai').is(':checked') ? 1 : 0,
+      skip_user: $('#bai-skip-user').is(':checked') ? 1 : 0,
       scheme: scheme,
       custom_prompt: custom_prompt,
       delimiter: delimiter,
@@ -133,7 +134,8 @@ jQuery(function($){
       nonce: BAISlugBulk.nonce,
       batch_size: parseInt($('#bai-batch-size').val()||'5',10),
       taxonomies: taxes,
-      skip_ai: $('#bai-terms-skip-ai').is(':checked') ? 1 : 0
+      skip_ai: $('#bai-terms-skip-ai').is(':checked') ? 1 : 0,
+      skip_user: $('#bai-terms-skip-user').is(':checked') ? 1 : 0
     };
   }
   function reqTerms(action){ return { action: action, nonce: BAISlugBulk.nonce }; }
