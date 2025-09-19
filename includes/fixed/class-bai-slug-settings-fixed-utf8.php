@@ -416,22 +416,26 @@ class BAI_Slug_Settings {
         echo '</div>'; // tab-basic
 
         echo '<div id="tab-glossary" class="bai-tab" style="display:none">';
-        echo '<form method="post" enctype="multipart/form-data" action="' . esc_url( admin_url( 'admin-ajax.php' ) ) . '">';
+        echo '<form method="post">';
         wp_nonce_field( 'bai_slug_settings' );
         echo '<table class="form-table">';
         echo '<tr><th>启用术语表</th><td><label><input type="checkbox" name="use_glossary" value="1" ' . checked( ! empty( $opt['use_glossary'] ), true, false ) . ' /> 启用</label></td></tr>';
-        echo '<tr><th>术语表内容</th><td><textarea id="bai-glossary-text" name="glossary_text" rows="12" class="large-text" placeholder="中文=English\n关键词|Another">' . esc_textarea( $opt['glossary_text'] ) . '</textarea><p class="description">每行“源=译”或“源|译”。仅在标题包含时提示模型使用准确翻译。</p></td></tr>';
-        echo '<tr><th>导入/导出</th><td>';
+        echo '<tr><th>术语表内容</th><td><textarea id="bai-glossary-text" name="glossary_text" rows="12" class="large-text" placeholder="中文=English\n关键词|Another\n魔法师-巫师-法师=Sorcerer">' . esc_textarea( $opt['glossary_text'] ) . '</textarea><p class="description">每行“源=译”或“源|译”。多个源词用“-”连接，保留连字符可写成 <code>\-</code>。仅在标题包含时提示模型使用准确翻译。</p></td></tr>';
         $dl = esc_url( admin_url( 'admin-ajax.php?action=bai_glossary_export&nonce=' . urlencode( wp_create_nonce( 'bai_slug_test' ) ) ) );
-        echo '<p><a class="button" href="' . $dl . '">导出 CSV</a></p>';
-        echo '<p><label>导入 CSV：<input type="file" name="glossary_csv" accept=".csv" /></label> '
-            . '<input type="hidden" name="action" value="bai_glossary_import" />'
-            . '<input type="hidden" name="nonce" value="' . esc_attr( wp_create_nonce( 'bai_slug_test' ) ) . '" />'
-            . '<button type="submit" name="bai_glossary_import_btn" class="button">导入 CSV</button></p>';
-        echo '<p class="description">仅支持 CSV 文件导入，第一列为“源”，第二列为“译”。过长的术语表会占用更多服务器资源并增加 AI token 消耗，请仅保留必要术语。</p>';
-        echo '</td></tr>';
+        echo '<tr><th>导出 CSV</th><td><a class="button" href="' . $dl . '">导出 CSV</a></td></tr>';
         echo '</table>';
         submit_button( BAI_Slug_I18n::t('btn_save'), 'primary', 'bai_slug_save', false );
+        echo '</form>';
+
+        echo '<hr class="bai-glossary-divider" style="margin:24px 0;" />';
+        echo '<form method="post" enctype="multipart/form-data" action="' . esc_url( admin_url( 'admin-ajax.php' ) ) . '" class="bai-glossary-import">';
+        echo '<input type="hidden" name="action" value="bai_glossary_import" />';
+        echo '<input type="hidden" name="nonce" value="' . esc_attr( wp_create_nonce( 'bai_slug_test' ) ) . '" />';
+        echo '<table class="form-table"><tr><th scope="row">导入 CSV</th><td>';
+        echo '<label><input type="file" name="glossary_csv" accept=".csv" /></label> ';
+        echo '<button type="submit" name="bai_glossary_import_btn" class="button">导入 CSV</button>';
+        echo '<p class="description">仅支持 CSV 文件导入，第一列为“源”，第二列为“译”。过长的术语表会占用更多服务器资源并增加 AI token 消耗，请仅保留必要术语。</p>';
+        echo '</td></tr></table>';
         echo '</form>';
         echo '</div>'; // tab-glossary
 
@@ -610,13 +614,29 @@ class BAI_Slug_Settings {
     public function ajax_glossary_export() {
         if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'denied' ); }
         check_admin_referer( 'bai_slug_test', 'nonce' );
-        $opt = self::get_settings();
+        $opt  = self::get_settings();
         $text = (string) ( $opt['glossary_text'] ?? '' );
-        $map = method_exists( 'BAI_Slug_Helpers', 'safe_parse_glossary_lines' ) ? 
-            BAI_Slug_Helpers::safe_parse_glossary_lines( $text ) : [];
+        $rows = [];
+        if ( $text !== '' ) {
+            $lines = preg_split( "/\r?\n/", $text );
+            foreach ( (array) $lines as $line ) {
+                $line = trim( (string) $line );
+                if ( $line === '' ) { continue; }
+                if ( strpos( $line, '=' ) !== false ) {
+                    list( $src, $dst ) = array_map( 'trim', explode( '=', $line, 2 ) );
+                } elseif ( strpos( $line, '|' ) !== false ) {
+                    list( $src, $dst ) = array_map( 'trim', explode( '|', $line, 2 ) );
+                } else {
+                    continue;
+                }
+                if ( $src === '' || $dst === '' ) { continue; }
+                $rows[] = [ $src, $dst ];
+            }
+        }
         $csv = "source,dest\n";
-        foreach ( $map as $k => $v ) {
-            $csv .= '"' . str_replace('"', '""', $k) . '",' . '"' . str_replace('"', '""', $v) . '"' . "\n";
+        foreach ( $rows as $row ) {
+            list( $src, $dst ) = $row;
+            $csv .= '"' . str_replace( '"', '""', $src ) . '",' . '"' . str_replace( '"', '""', $dst ) . '"' . "\n";
         }
         header( 'Content-Type: text/csv; charset=utf-8' );
         header( 'Content-Disposition: attachment; filename="glossary.csv"' );
@@ -648,7 +668,7 @@ class BAI_Slug_Settings {
         $opt = self::get_settings();
         $opt['glossary_text'] = implode( "\n", $lines );
         update_option( self::$option_name, $opt );
-        $count = count( $lines );
+        $count = count( BAI_Slug_Helpers::safe_parse_glossary_lines( implode( "\n", $lines ) ) );
         $args = [ self::$glossary_notice_key => ( $count > 0 ? 'imported' : 'invalid' ) ];
         if ( $count > 0 ) {
             $args['glossary_count'] = $count;

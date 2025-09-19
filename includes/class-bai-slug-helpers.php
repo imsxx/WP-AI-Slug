@@ -34,46 +34,58 @@ class BAI_Slug_Helpers {
         return $msg;
     }
 
-    private static function parse_glossary_lines( $text ) {
-        $map   = [];
-        $lines = preg_split( "/?
-/", (string) $text );
-        foreach ( $lines as $line ) {
-            $line = trim( $line );
-            if ( $line === '' ) { continue; }
-            if ( strpos( $line, '=' ) !== false ) {
-                list( $src, $dst ) = array_map( 'trim', explode( '=', $line, 2 ) );
-            } elseif ( strpos( $line, '|' ) !== false ) {
-                list( $src, $dst ) = array_map( 'trim', explode( '|', $line, 2 ) );
-            } else {
-                continue;
-            }
-            if ( $src !== '' && $dst !== '' ) { $map[ $src ] = $dst; }
-        }
-        return $map;
-    }
-
     public static function glossary_hint( $title, $settings ) {
         if ( empty( $settings['use_glossary'] ) || empty( $settings['glossary_text'] ) ) {
             return '';
         }
-        $map = method_exists( __CLASS__, 'safe_parse_glossary_lines' ) ? self::safe_parse_glossary_lines( $settings['glossary_text'] ) : self::parse_glossary_lines( $settings['glossary_text'] );
+        $map = self::safe_parse_glossary_lines( $settings['glossary_text'] );
         if ( empty( $map ) ) { return ''; }
         $title = (string) $title;
         $hits  = [];
         foreach ( $map as $src => $dst ) {
             if ( $src === '' || $dst === '' ) { continue; }
-            $pos = function_exists( 'mb_stripos' ) ? mb_stripos( $title, $src ) : stripos( $title, $src );
-            if ( $pos !== false ) { $hits[ $src ] = $dst; }
+        foreach ( (array) $lines as $line ) {
+            $line = trim( (string) $line );
+            if ( $line === '' ) { continue; }
+            list( $src, $dst ) = self::split_glossary_pair( $line );
+            if ( $src === '' || $dst === '' ) { continue; }
+            foreach ( self::expand_glossary_sources( $src ) as $variant ) {
+                $map[ $variant ] = $dst;
+            }
         }
-        if ( empty( $hits ) ) { return ''; }
-        $pairs = [];
-        foreach ( $hits as $k => $v ) { $pairs[] = $k . ' => ' . $v; }
-        return 'If the title contains these terms, use exact translations: ' . implode( '; ', $pairs ) . '.';
+        return $map;
     }
 
-    public static function safe_parse_glossary_lines( $text ) {
-        $map   = [];
+    private static function split_glossary_pair( $line ) {
+        $src = '';
+        $dst = '';
+        if ( strpos( $line, '=' ) !== false ) {
+            list( $src, $dst ) = array_map( 'trim', explode( '=', $line, 2 ) );
+        } elseif ( strpos( $line, '|' ) !== false ) {
+            list( $src, $dst ) = array_map( 'trim', explode( '|', $line, 2 ) );
+        }
+        return [ (string) $src, (string) $dst ];
+    }
+
+    private static function expand_glossary_sources( $src ) {
+        $src = (string) $src;
+        if ( $src === '' ) { return []; }
+        $placeholder = "\u{E000}";
+        $escaped     = str_replace( '\\-', $placeholder, $src );
+        $parts       = preg_split( '/\s*-\s*/u', $escaped );
+        if ( ! is_array( $parts ) ) { $parts = [ $escaped ]; }
+        $variants = [];
+        foreach ( $parts as $part ) {
+            $part = trim( str_replace( $placeholder, '-', $part ) );
+            if ( $part === '' ) { continue; }
+            $variants[ $part ] = true;
+        }
+        if ( empty( $variants ) ) {
+            $single = trim( str_replace( $placeholder, '-', $escaped ) );
+            if ( $single !== '' ) { $variants[ $single ] = true; }
+        }
+        return array_keys( $variants );
+    }
         $text  = (string) $text;
         if ( $text === '' ) { return $map; }
         $lines = preg_split( "/\r?\n/", $text );
