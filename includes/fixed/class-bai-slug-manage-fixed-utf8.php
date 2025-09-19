@@ -208,7 +208,8 @@ class BAI_Slug_Manage_Fixed {
             echo '<option value="' . esc_attr( $key ) . '"' . selected( $attr, $key, false ) . '>' . esc_html( $label ) . '</option>';
         }
         echo '</select></label> ';
-        echo '<label>搜索 <input type="text" id="bai-posts-search" placeholder="按标题搜索" style="min-width:180px;" /></label> ';
+        $search_placeholder = BAI_Slug_I18n::t( 'search_posts_placeholder' );
+        echo '<label>搜索 <input type="text" id="bai-posts-search" placeholder="' . esc_attr( $search_placeholder ) . '" style="min-width:180px;" /></label> ';
         echo '<label>每页 <input type="number" id="bai-posts-per" value="20" min="5" max="100" style="width:80px;" /></label> ';
         echo '<button type="button" class="button" id="bai-posts-refresh">刷新</button>';
         echo '</form>';

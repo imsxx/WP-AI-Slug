@@ -49,9 +49,15 @@
 - 文章：选择文章类型 + 每批数量 + 可选“跳过已由 AI 生成”，开始后观察进度与日志；提案在“手动编辑”页应用。
 - 术语：选择分类法 + 每批数量 + “跳过已由 AI 生成的术语”；默认仅处理 slug 为空或等于名称标准化的术语，避免覆盖自定义。
 - 游标：表示“处理到的最后 ID”，便于中断后继续；“重置游标”可从头重跑。
+- AJAX 列表搜索同时匹配标题与 slug；传入 `bai_slug_search` 时会通过 `posts_search` / `terms_clauses` 追加 `post_name` / `terms.slug` 条件，记得用后移除钩子。
 
 ### 手动编辑
 - 行内编辑标题/slug，生成提案，批量“接受选中/拒绝选中”；操作结果在页内以 notice 显示（非 alert）。
+- 搜索框支持标题与 slug 关键字，便于快速定位翻译异常条目。
+
+### 术语表导入/导出
+- `admin-ajax.php?action=bai_glossary_export` 会把当前映射导出为 `source,dest` 表头的 UTF-8 CSV。
+- `admin-ajax.php?action=bai_glossary_import` 接受含 `source,dest` 表头的 CSV；会跳过表头、忽略空值并在完成后重定向回“术语表”页签显示成功/失败 notice 与导入条目数。
 
 ## 编码指引（Windows/VS Code）
 - VS Code：右下角选择“UTF-8”；必要时“以编码重新打开/保存→UTF-8”。

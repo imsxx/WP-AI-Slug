@@ -167,7 +167,8 @@ jQuery(function($){
   function fetchPosts(p){ if(!$postsTbody.length) return; p=p||1; $postsTbody.html('<tr><td colspan="7">加载中…</td></tr>'); var ptype=$('#bai-posts-ptype').val()||'post'; var attr=$('#bai-posts-attr').val()||''; var s=$('#bai-posts-search').val()||''; var per=parseInt($('#bai-posts-per').val()||'20',10); $.post(BAISlugManage.ajax_url, { action:'bai_posts_list', nonce: BAISlugManage.nonce, ptype: ptype, attr: attr, s: s, paged: p, per_page: per })
     .done(function(res){ if(res && res.success){ var d=res.data||{}; renderPostsRows(d.items||[]); renderPostsPager(parseInt(d.total||0,10), parseInt(d.per_page||20,10), parseInt(d.paged||1,10)); } else { $postsTbody.html('<tr><td colspan="7">加载失败</td></tr>'); } })
     .fail(function(){ $postsTbody.html('<tr><td colspan="7">网络错误</td></tr>'); }); }
-  $('#bai-posts-refresh, #bai-posts-ptype, #bai-posts-attr').on('click change', function(){ fetchPosts(1); });
+  $('#bai-posts-refresh').on('click', function(){ fetchPosts(1); });
+  $('#bai-posts-ptype, #bai-posts-attr').on('change', function(){ fetchPosts(1); });
   $(document).on('keypress', '#bai-posts-search', function(e){ if(e.which===13){ e.preventDefault(); fetchPosts(1); } });
   $postsPager.on('click', 'a.page-numbers', function(){ var p=parseInt($(this).data('page')||'1',10); fetchPosts(p); });
   if($postsTbody.length){ fetchPosts(1); }

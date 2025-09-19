@@ -3,6 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class BAI_Slug_Settings {
     private static $option_name = 'bai_slug_settings';
+    private static $glossary_notice_key = 'glossary_notice';
 
     public function __construct() {
         add_action( 'admin_menu', [ $this, 'add_settings_page' ] );
@@ -182,6 +183,50 @@ class BAI_Slug_Settings {
         return $html;
     }
 
+    private static function glossary_redirect_url( $args = [] ) {
+        $base = admin_url( 'admin.php?page=bai-slug-settings' );
+        if ( empty( $args ) ) {
+            return $base . '#tab-glossary';
+        }
+        $clean = [];
+        foreach ( (array) $args as $key => $value ) {
+            $clean[ sanitize_key( $key ) ] = is_scalar( $value ) ? sanitize_text_field( (string) $value ) : '';
+        }
+        $url = add_query_arg( $clean, $base );
+        return $url . '#tab-glossary';
+    }
+
+    private static function output_glossary_notice() {
+        $notice = isset( $_GET[ self::$glossary_notice_key ] ) ? sanitize_key( wp_unslash( $_GET[ self::$glossary_notice_key ] ) ) : '';
+        if ( $notice === '' ) {
+            return;
+        }
+        $class   = 'notice notice-info';
+        $message = '';
+        $count   = isset( $_GET['glossary_count'] ) ? intval( $_GET['glossary_count'] ) : 0;
+        switch ( $notice ) {
+            case 'imported':
+                $class   = 'notice notice-success';
+                $message = sprintf( esc_html( BAI_Slug_I18n::t( 'glossary_import_success' ) ), max( 0, $count ) );
+                break;
+            case 'no_file':
+                $class   = 'notice notice-error';
+                $message = esc_html( BAI_Slug_I18n::t( 'glossary_import_missing' ) );
+                break;
+            case 'open_failed':
+                $class   = 'notice notice-error';
+                $message = esc_html( BAI_Slug_I18n::t( 'glossary_import_failed' ) );
+                break;
+            case 'invalid':
+                $class   = 'notice notice-warning';
+                $message = esc_html( BAI_Slug_I18n::t( 'glossary_import_invalid' ) );
+                break;
+        }
+        if ( $message !== '' ) {
+            echo '<div class="' . esc_attr( $class ) . '"><p>' . $message . '</p></div>';
+        }
+    }
+
     public function render_settings_page() {
         if ( isset( $_POST['bai_slug_save'] ) && current_user_can( 'manage_options' ) ) {
             check_admin_referer( 'bai_slug_settings' );
@@ -235,6 +280,8 @@ class BAI_Slug_Settings {
             update_option( self::$option_name, $opt );
             echo '<div class="notice notice-success"><p>设置已保存。</p></div>';
         }
+
+        self::output_glossary_notice();
 
         $opt = self::get_settings();
         $pts = get_post_types( [ 'show_ui' => true ], 'objects' );
@@ -407,7 +454,8 @@ class BAI_Slug_Settings {
             . '<option value="ai">AI 生成</option>'
             . '<option value="user-edited">人工修改</option>'
             . '</select></label>';
-        echo '<label>搜索 <input type="text" id="bai-terms-search" value="" placeholder="按名称搜索术语" style="min-width:180px;"></label>';
+        $term_search_placeholder = BAI_Slug_I18n::t( 'search_terms_placeholder' );
+        echo '<label>搜索 <input type="text" id="bai-terms-search" value="" placeholder="' . esc_attr( $term_search_placeholder ) . '" style="min-width:180px;"></label>';
         echo '<label>每页 <input type="number" id="bai-terms-per" value="20" min="5" max="100" style="width:80px;"></label>';
         echo '<button class="button" id="bai-terms-refresh">刷新</button>';
         echo '</div>';
@@ -578,22 +626,34 @@ class BAI_Slug_Settings {
     public function ajax_glossary_import() {
         if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'denied' ); }
         check_admin_referer( 'bai_slug_test', 'nonce' );
-        if ( empty( $_FILES['glossary_csv']['tmp_name'] ) ) { wp_die( 'no file' ); }
+        if ( empty( $_FILES['glossary_csv']['tmp_name'] ) ) {
+            wp_safe_redirect( self::glossary_redirect_url( [ self::$glossary_notice_key => 'no_file' ] ) );
+            exit;
+        }
         $fh = fopen( $_FILES['glossary_csv']['tmp_name'], 'r' );
-        if ( ! $fh ) { wp_die( 'open failed' ); }
+        if ( ! $fh ) {
+            wp_safe_redirect( self::glossary_redirect_url( [ self::$glossary_notice_key => 'open_failed' ] ) );
+            exit;
+        }
         $lines = [];
         while ( ( $row = fgetcsv( $fh ) ) !== false ) {
             if ( ! is_array( $row ) || count( $row ) < 2 ) { continue; }
             $src = trim( (string) $row[0] );
             $dst = trim( (string) $row[1] );
             if ( $src === '' || $dst === '' ) { continue; }
+            if ( empty( $lines ) && strcasecmp( $src, 'source' ) === 0 && strcasecmp( $dst, 'dest' ) === 0 ) { continue; }
             $lines[] = $src . '=' . $dst;
         }
         fclose( $fh );
         $opt = self::get_settings();
         $opt['glossary_text'] = implode( "\n", $lines );
         update_option( self::$option_name, $opt );
-        wp_safe_redirect( admin_url( 'options-general.php?page=bai-slug-settings#tab-glossary' ) );
+        $count = count( $lines );
+        $args = [ self::$glossary_notice_key => ( $count > 0 ? 'imported' : 'invalid' ) ];
+        if ( $count > 0 ) {
+            $args['glossary_count'] = $count;
+        }
+        wp_safe_redirect( self::glossary_redirect_url( $args ) );
         exit;
     }
 

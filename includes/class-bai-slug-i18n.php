@@ -81,6 +81,12 @@ class BAI_Slug_I18n {
             'vars_help_excerpt' => '[BODY_EXCERPT] - 智能提取的文章开篇内容。',
             'vars_help_post_type' => '[POST_TYPE] - 文章类型（post、page 等）。',
             'vars_help_max_length' => '[MAX_LENGTH] - Slug 最大长度限制（来自设置）。',
+            'glossary_import_success' => '术语表已导入，共 %d 条。',
+            'glossary_import_missing' => '请先选择要上传的 CSV 文件。',
+            'glossary_import_failed' => '无法读取上传的 CSV 文件。',
+            'glossary_import_invalid' => 'CSV 中未找到有效的术语条目。',
+            'search_posts_placeholder' => '按标题或 slug 搜索',
+            'search_terms_placeholder' => '按名称或 slug 搜索术语',
         ];
 
         $en = [
@@ -155,6 +161,12 @@ class BAI_Slug_I18n {
             'vars_help_excerpt' => '[BODY_EXCERPT] - Smartly extracted opening of the post.',
             'vars_help_post_type' => '[POST_TYPE] - Post type (post, page, etc.).',
             'vars_help_max_length' => '[MAX_LENGTH] - Max slug length (from settings).',
+            'glossary_import_success' => 'Glossary imported: %d entries.',
+            'glossary_import_missing' => 'Please choose a CSV file to upload.',
+            'glossary_import_failed' => 'Could not read the uploaded CSV file.',
+            'glossary_import_invalid' => 'No valid glossary rows were found in the CSV.',
+            'search_posts_placeholder' => 'Search by title or slug',
+            'search_terms_placeholder' => 'Search terms by name or slug',
         ];
 
         $dict = self::lang() === 'en' ? $en : $zh;
