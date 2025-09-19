@@ -6,6 +6,8 @@ class BAI_Slug_Queue {
     const CHUNK_PREFIX = 'bai_slug_queue_chunk_';
     const TERMS_JOB    = 'bai_slug_terms_job';
     const TERMS_IDS    = 'bai_slug_terms_ids';
+    private static $current_posts_search = '';
+    private static $current_terms_search = '';
 
     public static function init() {
         add_filter( 'cron_schedules', [ __CLASS__, 'add_cron_schedule' ] );
@@ -656,6 +658,46 @@ class BAI_Slug_Queue {
         wp_send_json_success( [ 'count' => $count ] );
     }
 
+    private static function extend_posts_search_with_slug( $search, $wp_query ) {
+        if ( empty( self::$current_posts_search ) ) { return $search; }
+        if ( empty( $wp_query ) || empty( $wp_query->query_vars['bai_slug_search'] ) ) { return $search; }
+        global $wpdb;
+        $like = '%' . $wpdb->esc_like( self::$current_posts_search ) . '%';
+        $condition = $wpdb->prepare( "{$wpdb->posts}.post_name LIKE %s", $like );
+        if ( $search === '' ) {
+            return ' AND (' . $condition . ')';
+        }
+        $pattern = '/\)\s*\)\s*$/';
+        $replacement = ' OR (' . $condition . '))';
+        $new = preg_replace( $pattern, $replacement, $search, 1, $count );
+        if ( $count > 0 ) {
+            return $new;
+        }
+        return $search . ' AND (' . $condition . ')';
+    }
+
+    private static function extend_terms_search_with_slug( $clauses, $taxonomies, $args ) {
+        if ( empty( self::$current_terms_search ) ) { return $clauses; }
+        if ( empty( $args['bai_slug_search'] ) ) { return $clauses; }
+        global $wpdb;
+        $like = '%' . $wpdb->esc_like( self::$current_terms_search ) . '%';
+        $condition = $wpdb->prepare( "{$wpdb->terms}.slug LIKE %s", $like );
+        $where = isset( $clauses['where'] ) ? $clauses['where'] : '';
+        if ( $where !== '' ) {
+            $pattern = '/\)\s*$/';
+            $replacement = ' OR ' . $condition . ')';
+            $new_where = preg_replace( $pattern, $replacement, $where, 1, $count );
+            if ( $count > 0 ) {
+                $clauses['where'] = $new_where;
+            } else {
+                $clauses['where'] .= ' AND (' . $condition . ')';
+            }
+        } else {
+            $clauses['where'] = ' AND (' . $condition . ')';
+        }
+        return $clauses;
+    }
+
     public static function ajax_posts_list() {
         if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
         $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
@@ -673,8 +715,13 @@ class BAI_Slug_Queue {
             'order'          => 'DESC',
             'posts_per_page' => $per,
             'paged'          => $paged,
-            's'              => $s,
         ];
+        if ( $s !== '' ) {
+            $args['s'] = $s;
+            $args['bai_slug_search'] = 1;
+            self::$current_posts_search = $s;
+            add_filter( 'posts_search', [ __CLASS__, 'extend_posts_search_with_slug' ], 10, 2 );
+        }
         if ( $attr === 'ai' ) {
             $args['meta_query'] = [ [ 'key' => '_slug_source', 'value' => 'ai', 'compare' => '=' ] ];
         } elseif ( $attr === 'user-edited' ) {
@@ -690,6 +737,10 @@ class BAI_Slug_Queue {
         }
 
         $q = new WP_Query( $args );
+        if ( $s !== '' ) {
+            remove_filter( 'posts_search', [ __CLASS__, 'extend_posts_search_with_slug' ], 10 );
+            self::$current_posts_search = '';
+        }
         $items = [];
         foreach ( $q->posts as $p ) {
             $id   = (int) $p->ID;
@@ -727,7 +778,12 @@ class BAI_Slug_Queue {
             'count_total'  => true,
         ];
         if ( $tax && $tax !== 'all' ) { $args['taxonomy'] = [ $tax ]; }
-        if ( $search !== '' ) { $args['search'] = $search; }
+        if ( $search !== '' ) {
+            $args['search'] = $search;
+            $args['bai_slug_search'] = 1;
+            self::$current_terms_search = $search;
+            add_filter( 'terms_clauses', [ __CLASS__, 'extend_terms_search_with_slug' ], 10, 3 );
+        }
         if ( in_array( $attr, [ 'ai', 'user-edited', 'pending-slug', 'proposed' ], true ) ) {
             if ( $attr === 'pending-slug' ) {
                 $args['meta_query'] = [
@@ -742,6 +798,10 @@ class BAI_Slug_Queue {
             }
         }
         $terms = get_terms( $args );
+        if ( $search !== '' ) {
+            remove_filter( 'terms_clauses', [ __CLASS__, 'extend_terms_search_with_slug' ], 10 );
+            self::$current_terms_search = '';
+        }
         if ( is_wp_error( $terms ) ) {
             wp_send_json_error( [ 'message' => $terms->get_error_message() ] );
         }
@@ -762,7 +822,16 @@ class BAI_Slug_Queue {
             // When count_total true, get_terms() sets total via $GLOBALS['wp_object_cache'] internals; to avoid complexity, run a light count query
             $args2 = $args; unset( $args2['number'], $args2['offset'] );
             $args2['fields'] = 'count';
+            if ( $search !== '' ) {
+                $args2['bai_slug_search'] = 1;
+                self::$current_terms_search = $search;
+                add_filter( 'terms_clauses', [ __CLASS__, 'extend_terms_search_with_slug' ], 10, 3 );
+            }
             $total = (int) get_terms( $args2 );
+            if ( $search !== '' ) {
+                remove_filter( 'terms_clauses', [ __CLASS__, 'extend_terms_search_with_slug' ], 10 );
+                self::$current_terms_search = '';
+            }
         }
         wp_send_json_success( [ 'items' => $items, 'total' => $total, 'paged' => (int) $paged, 'per_page' => (int) $per ] );
     }
