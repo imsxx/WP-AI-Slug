@@ -8,6 +8,7 @@ class BAI_Slug_Posts {
     public function __construct() {
         add_filter( 'wp_insert_post_data', [ $this, 'maybe_generate_on_insert' ], 10, 2 );
         add_action( 'save_post', [ $this, 'track_user_edit' ], 10, 2 );
+        add_action( 'wp_ajax_bai_slug_regenerate_post', [ $this, 'ajax_regenerate_post' ] );
     }
 
     public function maybe_generate_on_insert( $data, $postarr ) {
@@ -17,8 +18,10 @@ class BAI_Slug_Posts {
         if ( ( $data['post_status'] ?? '' ) === 'auto-draft' ) {
             return $data;
         }
-
-        $settings = BAI_Slug_Settings::get_settings();
+        $settings = class_exists( 'BAI_Slug_Settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        if ( empty( $settings['auto_generate_posts'] ) ) {
+            return $data;
+        }
         if ( ! in_array( $data['post_type'], (array) $settings['enabled_post_types'], true ) ) {
             return $data;
         }
@@ -73,6 +76,51 @@ class BAI_Slug_Posts {
             update_post_meta( $post_id, $this->meta_source, 'user-edited' );
         }
     }
+
+    private function verify_nonce_flexible( $nonce ) {
+        if ( ! $nonce ) return false;
+        if ( wp_verify_nonce( $nonce, 'bai_slug_regen' ) ) return true;
+        if ( wp_verify_nonce( $nonce, 'bai_slug_manage' ) ) return true;
+        if ( wp_verify_nonce( $nonce, 'bai_slug_queue' ) ) return true;
+        if ( wp_verify_nonce( $nonce, 'bai_slug_test' ) ) return true;
+        return false;
+    }
+
+    public function ajax_regenerate_post() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'permission denied' ], 403 );
+        }
+        $nonce = isset( $_POST['nonce'] ) ? (string) $_POST['nonce'] : '';
+        if ( ! $this->verify_nonce_flexible( $nonce ) ) {
+            wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        }
+
+        $post_id = intval( $_POST['post_id'] ?? 0 );
+        if ( ! $post_id ) {
+            wp_send_json_error( [ 'message' => 'invalid id' ], 400 );
+        }
+        $post = get_post( $post_id );
+        if ( ! $post ) {
+            wp_send_json_error( [ 'message' => 'not found' ], 404 );
+        }
+
+        $settings = class_exists( 'BAI_Slug_Settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        $context  = method_exists( 'BAI_Slug_Helpers', 'context_from_post' ) ? BAI_Slug_Helpers::context_from_post( $post, $settings ) : [];
+        $slug     = BAI_Slug_Helpers::request_slug( $post->post_title, $settings, $context );
+        if ( ! $slug ) {
+            wp_send_json_error( [ 'message' => 'failed to generate' ] );
+        }
+        $res = wp_update_post( [ 'ID' => $post_id, 'post_name' => $slug ], true );
+        if ( is_wp_error( $res ) ) {
+            wp_send_json_error( [ 'message' => $res->get_error_message() ] );
+        }
+        update_post_meta( $post_id, '_generated_slug', $slug );
+        update_post_meta( $post_id, '_slug_source', 'ai' );
+        if ( method_exists( 'BAI_Slug_Settings', 'increment_counter' ) ) { BAI_Slug_Settings::increment_counter(); }
+
+        wp_send_json_success( [ 'slug' => $slug, 'permalink' => get_permalink( $post_id ) ] );
+    }
 }
 
 ?>
+

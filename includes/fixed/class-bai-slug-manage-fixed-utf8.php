@@ -9,14 +9,8 @@ class BAI_Slug_Manage_Fixed {
     }
 
     public function add_menu() {
-        add_submenu_page(
-            'options-general.php',
-            BAI_Slug_I18n::t('manual_title'),
-            BAI_Slug_I18n::t('manual_title'),
-            'manage_options',
-            'bai-slug-manage',
-            [ $this, 'render' ]
-        );
+        // Menu integrated into top-level WP-AI-Slug page tabs; no separate Settings submenu.
+        return;
     }
 
     public function enqueue( $hook ) {
@@ -27,14 +21,20 @@ class BAI_Slug_Manage_Fixed {
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'bai_slug_manage' ),
             'i18n'     => [
-                'edit' => BAI_Slug_I18n::t('btn_edit'),
-                'done' => BAI_Slug_I18n::t('btn_done'),
-                'saving' => BAI_Slug_I18n::t('saving'),
-                'save_failed' => BAI_Slug_I18n::t('save_failed'),
-                'network_error' => BAI_Slug_I18n::t('network_error'),
-                'applied' => BAI_Slug_I18n::t('applied'),
-                'rejected' => BAI_Slug_I18n::t('rejected'),
-                'no_selection' => BAI_Slug_I18n::t('no_selection'),
+                'edit'           => BAI_Slug_I18n::t('btn_edit'),
+                'done'           => BAI_Slug_I18n::t('btn_done'),
+                'saving'         => BAI_Slug_I18n::t('saving'),
+                'save_failed'    => BAI_Slug_I18n::t('save_failed'),
+                'network_error'  => BAI_Slug_I18n::t('network_error'),
+                'applied'        => BAI_Slug_I18n::t('applied'),
+                'rejected'       => BAI_Slug_I18n::t('rejected'),
+                'no_selection'   => BAI_Slug_I18n::t('no_selection'),
+                'applying'       => BAI_Slug_I18n::t('applying'),
+                'apply_done'     => BAI_Slug_I18n::t('apply_done'),
+                'failed'         => BAI_Slug_I18n::t('failed'),
+                'error_generic'  => BAI_Slug_I18n::t('error_generic'),
+                'generate'       => BAI_Slug_I18n::t('generate'),
+                'generate_done'  => BAI_Slug_I18n::t('generate_done'),
             ],
         ] );
     }
@@ -62,6 +62,32 @@ class BAI_Slug_Manage_Fixed {
         );
 
         echo '<div id="bai-manage-notice" style="display:none"></div>';
+        // Batch toolbar (merged bulk controls)
+        $settings = class_exists( 'BAI_Slug_Settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        echo '<div class="card" id="bai-batch-toolbar" style="margin:12px 0; padding:10px;">';
+        echo '<div style="margin-bottom:8px;">' . esc_html__( '文章类型', 'wp-ai-slug' ) . '： ';
+        foreach ( $pts as $pt => $obj ) {
+            echo '<label style="display:inline-block;margin-right:12px">'
+                . '<input type="checkbox" class="bai-batch-pt" value="' . esc_attr( $pt ) . '" ' . checked( in_array( $pt, (array) ( $settings['enabled_post_types'] ?? [] ), true ), true, false ) . ' /> '
+                . esc_html( $obj->labels->singular_name ) . '</label>';
+        }
+        echo '</div>';
+        echo '<div style="margin-bottom:8px;">'
+            . '<label style="margin-right:12px"><input type="checkbox" id="bai-batch-skip-ai" checked /> ' . esc_html( BAI_Slug_I18n::t('filter_skip_ai') ) . '</label>'
+            . '<label><input type="checkbox" id="bai-batch-skip-user" checked /> ' . esc_html( BAI_Slug_I18n::t('filter_skip_user') ) . '</label>'
+            . '</div>';
+        echo '<div style="margin-bottom:8px;">'
+            . '<label>' . esc_html__( '批处理大小', 'wp-ai-slug' ) . ' '
+            . '<input type="number" id="bai-batch-size" min="1" max="50" value="5" style="width:80px;" />'
+            . '</label>'
+            . '</div>';
+        echo '<div class="actions">'
+            . '<button type="button" class="button button-primary" id="bai-batch-start">' . esc_html( BAI_Slug_I18n::t('btn_start') ) . '</button> '
+            . '<button type="button" class="button" id="bai-batch-pause">' . esc_html( BAI_Slug_I18n::t('btn_stop') ) . '</button> '
+            . '<button type="button" class="button" id="bai-batch-reset">' . esc_html( BAI_Slug_I18n::t('btn_reset_cursor') ) . '</button>'
+            . '</div>';
+        echo '<p class="description" id="bai-batch-progress">' . esc_html__( '进度：已处理', 'wp-ai-slug' ) . ' <strong id="bai-batch-processed">0</strong> / ' . esc_html__( '总计', 'wp-ai-slug' ) . ' <strong id="bai-batch-total">0</strong> (' . esc_html__( '待处理提案', 'wp-ai-slug' ) . ': <strong id="bai-batch-pending">0</strong>)</p>';
+        echo '</div>';
         $this->render_toolbar();
         $this->render_table( $query );
         $this->render_pagination(
@@ -102,19 +128,34 @@ class BAI_Slug_Manage_Fixed {
         );
 
         echo '<div id="bai-manage-notice" style="display:none"></div>';
+        // Batch toolbar inside settings tab as well
+        $settings = class_exists( 'BAI_Slug_Settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        echo '<div class="card" id="bai-batch-toolbar" style="margin:12px 0; padding:10px;">';
+        echo '<div style="margin-bottom:8px;">' . esc_html__( '文章类型', 'wp-ai-slug' ) . '： ';
+        foreach ( $pts as $pt => $obj ) {
+            echo '<label style="display:inline-block;margin-right:12px">'
+                . '<input type="checkbox" class="bai-batch-pt" value="' . esc_attr( $pt ) . '" ' . checked( in_array( $pt, (array) ( $settings['enabled_post_types'] ?? [] ), true ), true, false ) . ' /> '
+                . esc_html( $obj->labels->singular_name ) . '</label>';
+        }
+        echo '</div>';
+        echo '<div style="margin-bottom:8px;">'
+            . '<label><input type="checkbox" id="bai-batch-skip-ai" checked /> ' . esc_html( BAI_Slug_I18n::t('filter_skip_ai') ) . '</label>'
+            . '</div>';
+        echo '<div style="margin-bottom:8px;">'
+            . '<label>' . esc_html__( '批处理大小', 'wp-ai-slug' ) . ' '
+            . '<input type="number" id="bai-batch-size" min="1" max="50" value="5" style="width:80px;" />'
+            . '</label>'
+            . '</div>';
+        echo '<div class="actions">'
+            . '<button type="button" class="button button-primary" id="bai-batch-start">' . esc_html( BAI_Slug_I18n::t('btn_start') ) . '</button> '
+            . '<button type="button" class="button" id="bai-batch-pause">' . esc_html( BAI_Slug_I18n::t('btn_stop') ) . '</button> '
+            . '<button type="button" class="button" id="bai-batch-reset">' . esc_html( BAI_Slug_I18n::t('btn_reset_cursor') ) . '</button>'
+            . '</div>';
+        echo '<p class="description" id="bai-batch-progress">' . esc_html__( '进度：已处理', 'wp-ai-slug' ) . ' <strong id="bai-batch-processed">0</strong> / ' . esc_html__( '总计', 'wp-ai-slug' ) . ' <strong id="bai-batch-total">0</strong> (' . esc_html__( '待处理提案', 'wp-ai-slug' ) . ': <strong id="bai-batch-pending">0</strong>)</p>';
+        echo '</div>';
         $this->render_toolbar();
-        $this->render_table( $query );
-        $this->render_pagination(
-            $query,
-            $paged,
-            admin_url( 'options-general.php' ),
-            [
-                'page' => 'bai-slug-settings',
-                'active_tab' => 'tab-manual',
-                'ptype' => $post_type,
-                'attr' => $attr,
-            ]
-        );
+        $this->render_table( null );
+        echo '<div class="tablenav"><div class="tablenav-pages" id="bai-posts-pagination"></div></div>';
         echo '</div>';
     }
 
@@ -134,6 +175,12 @@ class BAI_Slug_Manage_Fixed {
             $args['meta_query'] = [ [ 'key' => '_slug_source', 'value' => 'user-edited', 'compare' => '=' ] ];
         } elseif ( $attr === 'proposed' ) {
             $args['meta_query'] = [ [ 'key' => '_proposed_slug', 'compare' => 'EXISTS' ] ];
+        } elseif ( $attr === 'pending-slug' ) {
+            $args['meta_query'] = [
+                'relation' => 'AND',
+                [ 'key' => '_slug_source', 'compare' => 'NOT EXISTS' ],
+                [ 'key' => '_proposed_slug', 'compare' => 'NOT EXISTS' ],
+            ];
         }
 
         return new WP_Query( $args );
@@ -144,23 +191,26 @@ class BAI_Slug_Manage_Fixed {
         foreach ( $hidden as $key => $value ) {
             echo '<input type="hidden" name="' . esc_attr( $key ) . '" value="' . esc_attr( $value ) . '" />';
         }
-        echo '<label>' . esc_html( BAI_Slug_I18n::t('label_post_types') ) . ' <select name="ptype">';
+        echo '<label>' . esc_html( BAI_Slug_I18n::t('label_post_types') ) . ' <select name="ptype" id="bai-posts-ptype">';
         foreach ( $pts as $pt => $obj ) {
             echo '<option value="' . esc_attr( $pt ) . '"' . selected( $post_type, $pt, false ) . '>' . esc_html( $obj->labels->singular_name ) . '</option>';
         }
         echo '</select></label> ';
         $attr_options = [
             '' => esc_html__( '全部', 'wp-ai-slug' ),
+            'pending-slug' => esc_html__( '待生成Slug', 'wp-ai-slug' ),
             'proposed' => esc_html__( '待处理提案', 'wp-ai-slug' ),
             'ai' => esc_html__( 'AI 生成', 'wp-ai-slug' ),
             'user-edited' => esc_html__( '人工修改', 'wp-ai-slug' ),
         ];
-        echo '<label>' . esc_html__( '状态筛选', 'wp-ai-slug' ) . ' <select name="attr">';
+        echo '<label>' . esc_html__( '状态筛选', 'wp-ai-slug' ) . ' <select name="attr" id="bai-posts-attr">';
         foreach ( $attr_options as $key => $label ) {
             echo '<option value="' . esc_attr( $key ) . '"' . selected( $attr, $key, false ) . '>' . esc_html( $label ) . '</option>';
         }
         echo '</select></label> ';
-        submit_button( esc_html__( '筛选', 'wp-ai-slug' ), 'secondary', '', false );
+        echo '<label>搜索 <input type="text" id="bai-posts-search" placeholder="按标题搜索" style="min-width:180px;" /></label> ';
+        echo '<label>每页 <input type="number" id="bai-posts-per" value="20" min="5" max="100" style="width:80px;" /></label> ';
+        echo '<button type="button" class="button" id="bai-posts-refresh">刷新</button>';
         echo '</form>';
     }
 
@@ -183,66 +233,7 @@ class BAI_Slug_Manage_Fixed {
             . '<th>' . esc_html__( '提案 / 状态', 'wp-ai-slug' ) . '</th>'
             . '<th width="120">' . esc_html( BAI_Slug_I18n::t('col_attr') ) . '</th>'
             . '<th width="120">' . esc_html( BAI_Slug_I18n::t('col_actions') ) . '</th>'
-            . '</tr></thead><tbody>';
-
-        if ( $query->have_posts() ) {
-            while ( $query->have_posts() ) {
-                $query->the_post();
-                $pid      = get_the_ID();
-                $title    = get_the_title();
-                $slug     = get_post_field( 'post_name', $pid );
-                $src      = get_post_meta( $pid, '_slug_source', true );
-                $proposed = get_post_meta( $pid, '_proposed_slug', true );
-                $meta     = get_post_meta( $pid, '_proposed_meta', true );
-                $conflict = '';
-                if ( is_array( $meta ) && ! empty( $meta['conflict'] ) ) {
-                    if ( $meta['conflict'] === 'auto' ) {
-                        $conflict = esc_html__( '已自动处理冲突', 'wp-ai-slug' );
-                    } elseif ( $meta['conflict'] === 'conflict' ) {
-                        $conflict = esc_html__( '存在冲突', 'wp-ai-slug' );
-                    }
-                }
-
-                echo '<tr data-id="' . esc_attr( $pid ) . '">';
-                echo '<td><input type="checkbox" class="bai-select" value="' . (int) $pid . '" /></td>';
-                echo '<td>' . (int) $pid . '</td>';
-                echo '<td class="col-title"><span class="text">' . esc_html( $title ) . '</span><input class="edit-title" type="text" value="' . esc_attr( $title ) . '" style="display:none;width:100%" /></td>';
-                echo '<td class="col-slug"><code class="text">' . esc_html( $slug ) . '</code><input class="edit-slug" type="text" value="' . esc_attr( $slug ) . '" style="display:none;width:100%" /></td>';
-
-                echo '<td class="col-status">';
-                echo '<span class="dashicons dashicons-update status-spinner" style="display:none"></span>';
-                if ( $proposed ) {
-                    echo '<span class="status-proposed"><code>' . esc_html( $proposed ) . '</code></span>';
-                } else {
-                    echo '<span class="status-proposed" style="display:none"></span>';
-                }
-                if ( $conflict ) {
-                    echo '<span class="status-note" style="display:block;margin-top:4px;">' . esc_html( $conflict ) . '</span>';
-                }
-                echo '<div class="status-actions" style="margin-top:6px;">';
-                echo '<button type="button" class="button bai-gen"' . ( $proposed ? ' style="display:none"' : '' ) . '>' . esc_html__( '生成', 'wp-ai-slug' ) . '</button> ';
-                echo '<button type="button" class="button bai-accept"' . ( $proposed ? '' : ' style="display:none"' ) . '>' . esc_html__( '应用', 'wp-ai-slug' ) . '</button> ';
-                echo '<button type="button" class="button bai-reject"' . ( $proposed ? '' : ' style="display:none"' ) . '>' . esc_html__( '拒绝', 'wp-ai-slug' ) . '</button>';
-                echo '</div>';
-                echo '</td>';
-
-                echo '<td class="col-attr">'
-                    . '<span class="text">' . ( $src ? esc_html( $src ) : '-' ) . '</span>'
-                    . '<select class="edit-attr" style="display:none;">'
-                    . '<option value="ai"' . selected( $src, 'ai', false ) . '>' . esc_html( BAI_Slug_I18n::t('attr_ai') ) . '</option>'
-                    . '<option value="user-edited"' . selected( $src, 'user-edited', false ) . '>' . esc_html( BAI_Slug_I18n::t('attr_user') ) . '</option>'
-                    . '</select>'
-                    . '</td>';
-
-                echo '<td class="col-actions"><button class="button bai-edit">' . esc_html( BAI_Slug_I18n::t('btn_edit') ) . '</button></td>';
-                echo '</tr>';
-            }
-            wp_reset_postdata();
-        } else {
-            echo '<tr><td colspan="7">' . esc_html__( '暂无数据', 'wp-ai-slug' ) . '</td></tr>';
-        }
-
-        echo '</tbody></table>';
+            . '</tr></thead><tbody id="bai-posts-tbody"><tr><td colspan="7">加载中…</td></tr></tbody></table>';
     }
 
     private function render_pagination( $query, $paged, $action, $args ) {
@@ -265,14 +256,14 @@ class BAI_Slug_Manage_Fixed {
         $base = add_query_arg( array_merge( $base_args, [ 'paged' => '%#%' ] ), $action );
 
         echo '<div class="tablenav"><div class="tablenav-pages">';
-        echo paginate_links( [
+        echo '<span class="pagination-links">' . paginate_links( [
             'base'      => $base,
             'format'    => '',
             'prev_text' => '&laquo;',
             'next_text' => '&raquo;',
             'current'   => $paged,
             'total'     => $total,
-        ] );
+        ] ) . '</span>';
         echo '</div></div>';
     }
 

@@ -24,6 +24,19 @@ class BAI_Slug_Queue {
         add_action( 'wp_ajax_bai_slug_terms_start', [ __CLASS__, 'ajax_terms_start' ] );
         add_action( 'wp_ajax_bai_slug_terms_progress', [ __CLASS__, 'ajax_terms_progress' ] );
         add_action( 'wp_ajax_bai_slug_terms_reset', [ __CLASS__, 'ajax_terms_reset' ] );
+        // Visible proposals fetch for current page rows
+        add_action( 'wp_ajax_bai_slug_get_proposals', [ __CLASS__, 'ajax_get_proposals' ] );
+        // Global pending proposals count
+        add_action( 'wp_ajax_bai_slug_count_proposals', [ __CLASS__, 'ajax_count_proposals' ] );
+        // Pending-slug count (no _slug_source and no _proposed_slug)
+        add_action( 'wp_ajax_bai_slug_count_pending', [ __CLASS__, 'ajax_count_pending' ] );
+        // Terms list + single-term actions (for 标签处理 列表视图)
+        add_action( 'wp_ajax_bai_terms_list', [ __CLASS__, 'ajax_terms_list' ] );
+        add_action( 'wp_ajax_bai_term_generate_one', [ __CLASS__, 'ajax_term_generate_one' ] );
+        add_action( 'wp_ajax_bai_term_apply', [ __CLASS__, 'ajax_term_apply' ] );
+        add_action( 'wp_ajax_bai_term_reject', [ __CLASS__, 'ajax_term_reject' ] );
+        // Posts list for 文章类处理 AJAX 视图
+        add_action( 'wp_ajax_bai_posts_list', [ __CLASS__, 'ajax_posts_list' ] );
     }
 
     public static function add_cron_schedule( $schedules ) {
@@ -62,10 +75,16 @@ class BAI_Slug_Queue {
         $delimiter_custom = sanitize_text_field( wp_unslash( (string) ( $_POST['delimiter_custom'] ?? '' ) ) );
         $collision = in_array( (string) ( $_POST['collision'] ?? 'append_date' ), [ 'append_date','mark' ], true ) ? (string) $_POST['collision'] : 'append_date';
         $skip_ai = ! empty( $_POST['skip_ai'] );
+        $skip_user = ! empty( $_POST['skip_user'] );
+        $pending_only = ! empty( $_POST['pending_only'] );
 
         // Build queue once
         self::reset_job_and_queue();
-        $ids = self::collect_candidate_ids( $post_types, $skip_ai );
+        $ids = self::collect_candidate_ids( $post_types, $skip_ai, $skip_user, $pending_only );
+        if ( empty( $ids ) ) {
+            if ( class_exists( 'BAI_Slug_Log' ) ) { BAI_Slug_Log::add( '队列启动失败：无待处理条目（pending_only=' . ( $pending_only ? '1' : '0' ) . '）' ); }
+            wp_send_json_error( [ 'message' => '无待处理条目' ] );
+        }
         self::store_queue_chunks( $ids );
 
         $job = [
@@ -178,29 +197,55 @@ class BAI_Slug_Queue {
         }
     }
 
-    private static function collect_candidate_ids( $post_types, $skip_ai = false ) {
+    private static function collect_candidate_ids( $post_types, $skip_ai = false, $skip_user = true, $pending_only = false ) {
         global $wpdb;
         $statuses = [ 'publish', 'future', 'draft', 'pending', 'private' ];
         if ( empty( $post_types ) ) $post_types = [ 'post', 'page' ];
         $st_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
         $pt_placeholders = implode( ', ', array_fill( 0, count( $post_types ), '%s' ) );
 
-        // Skip user-edited always; optionally skip ai-generated
-        $cond_meta = $skip_ai
-            ? "(m.meta_value IS NULL OR (m.meta_value <> 'user-edited' AND m.meta_value <> 'ai'))"
-            : "(m.meta_value IS NULL OR m.meta_value <> 'user-edited')";
-
-        $sql = $wpdb->prepare(
-            "SELECT p.ID FROM {$wpdb->posts} p
+        // Meta joins: slug source + proposed slug
+        $sql_base = "FROM {$wpdb->posts} p
              LEFT JOIN {$wpdb->postmeta} m ON (m.post_id = p.ID AND m.meta_key = '_slug_source')
+             LEFT JOIN {$wpdb->postmeta} pr ON (pr.post_id = p.ID AND pr.meta_key = '_proposed_slug')
              WHERE p.post_status IN ($st_placeholders)
-               AND p.post_type   IN ($pt_placeholders)
-               AND $cond_meta
-             ORDER BY p.ID DESC",
-            array_merge( $statuses, $post_types )
-        );
-        $ids = $wpdb->get_col( $sql );
-        return array_map( 'intval', (array) $ids );
+               AND p.post_type   IN ($pt_placeholders)";
+
+        if ( $pending_only ) {
+            // 待生成：没有来源标记，且没有提案
+            $cond = " AND m.post_id IS NULL AND pr.post_id IS NULL";
+        } else {
+            // 可选跳过：人工/AI
+            if ( $skip_user && $skip_ai ) {
+                $cond = " AND (m.meta_value IS NULL OR (m.meta_value <> 'user-edited' AND m.meta_value <> 'ai'))";
+            } elseif ( $skip_user ) {
+                $cond = " AND (m.meta_value IS NULL OR m.meta_value <> 'user-edited')";
+            } elseif ( $skip_ai ) {
+                $cond = " AND (m.meta_value IS NULL OR m.meta_value <> 'ai')";
+            } else {
+                $cond = '';
+            }
+        }
+
+        $sql = $wpdb->prepare( "SELECT p.ID " . $sql_base . $cond . " ORDER BY p.ID DESC",
+            array_merge( $statuses, $post_types ) );
+        $ids = array_map( 'intval', (array) $wpdb->get_col( $sql ) );
+
+        // Strict mode: 仅当 slug 为空或等于标准化标题时才处理（高级保护）
+        $settings = method_exists( 'BAI_Slug_Settings', 'get_settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        $strict = ! empty( $settings['strict_mode'] );
+        if ( $strict && $pending_only && ! empty( $ids ) ) {
+            $filtered = [];
+            foreach ( $ids as $id ) {
+                $p = get_post( $id ); if ( ! $p ) { continue; }
+                $slug = (string) $p->post_name;
+                $san  = sanitize_title( (string) $p->post_title );
+                if ( $slug === '' || $slug === $san ) { $filtered[] = $id; }
+            }
+            if ( class_exists( 'BAI_Slug_Log' ) ) { BAI_Slug_Log::add( '严格模式生效：候选从 ' . count( $ids ) . ' 过滤到 ' . count( $filtered ) ); }
+            $ids = $filtered;
+        }
+        return $ids;
     }
 
     public static function tick() {
@@ -299,16 +344,7 @@ class BAI_Slug_Queue {
         $rep  = ($delimiter === 'custom') ? ( $custom !== '' ? $custom : '-' ) : ( $delimiter === '_' ? '_' : '-' );
         $slug = preg_replace( '/[\s\-_]+/', $rep, $slug );
         $slug = trim( $slug, $rep );
-        // Fallback: enforce length limit softly based on settings
-        $settings = method_exists( 'BAI_Slug_Settings', 'get_settings' ) ? BAI_Slug_Settings::get_settings() : [];
-        $max_chars = max( 10, (int) ( $settings['slug_max_chars'] ?? 60 ) );
-        if ( strlen( $slug ) > $max_chars ) {
-            $cut = substr( $slug, 0, $max_chars );
-            // try cut at last delimiter to avoid half-words
-            $pos = strrpos( $cut, $rep );
-            if ( $pos !== false && $pos > 0 ) { $cut = substr( $cut, 0, $pos ); }
-            $slug = rtrim( $cut, $rep );
-        }
+        // No hard length enforcement here; prompt controls length semantics.
         return $slug;
     }
 
@@ -329,16 +365,14 @@ class BAI_Slug_Queue {
         $glossary_tip = ( class_exists( 'BAI_Slug_Helpers' ) && method_exists( 'BAI_Slug_Helpers', 'glossary_hint' ) )
             ? BAI_Slug_Helpers::glossary_hint( $post->post_title, $settings )
             : '';
-        $max_chars = max( 10, (int) ( $settings['slug_max_chars'] ?? 60 ) );
         $custom_system = isset( $settings['system_prompt'] ) ? trim( (string) $settings['system_prompt'] ) : '';
         if ( $custom_system === '' ) {
-            $system = 'You are a URL slug generator. Return only a single English URL slug.'
-                . ' Constraints: 1-4 words; lowercase a-z and 0-9; words separated by hyphens;'
-                . ' no quotes, punctuation, emojis, or explanations; preserve the page intent;'
-                . ' do not exceed ' . $max_chars . ' characters.'
-                . ( $glossary_tip ? ( ' ' . $glossary_tip ) : '' );
+            $system = ( class_exists( 'BAI_Slug_Helpers' ) && method_exists( 'BAI_Slug_Helpers', 'default_system_prompt' ) )
+                ? BAI_Slug_Helpers::default_system_prompt( 0, 'title' )
+                : 'Return a single English URL slug in 1-4 words, lowercase, hyphen-separated.';
+            if ( $glossary_tip ) { $system .= ' ' . $glossary_tip; }
         } else {
-            $system = $custom_system;
+            $system = $custom_system . ( $glossary_tip ? ( ' ' . $glossary_tip ) : '' );
         }
         $messages[] = [ 'role' => 'system', 'content' => $system ];
         if ( $scheme === 'content' ) {
@@ -359,7 +393,12 @@ class BAI_Slug_Queue {
         if ( ! $resp['ok'] ) return [ 'ok' => false, 'error' => $resp['message'] ];
         $raw = sanitize_text_field( $resp['content'] );
         $slug = self::apply_delimiter( $raw, $delimiter, $delimiter_custom );
-        if ( $slug === '' ) return [ 'ok' => false, 'error' => 'empty' ];
+        if ( $slug === '' ) {
+            // Fallback to sanitized title to avoid hard failure on rare cases
+            $fallback = sanitize_title( (string) $post->post_title );
+            if ( $fallback !== '' ) { $slug = $fallback; }
+            else { return [ 'ok' => false, 'error' => 'empty' ]; }
+        }
 
         $conflict = self::slug_conflict( $slug, $post->ID ) ? 'conflict' : 'none';
         if ( $conflict === 'conflict' && $collision === 'append_date' ) {
@@ -379,6 +418,7 @@ class BAI_Slug_Queue {
         if ( ! $nonce ) return false;
         if ( wp_verify_nonce( $nonce, 'bai_slug_queue' ) ) return true;
         if ( wp_verify_nonce( $nonce, 'bai_slug_manage' ) ) return true;
+        if ( wp_verify_nonce( $nonce, 'bai_slug_test' ) ) return true;
         return false;
     }
 
@@ -391,9 +431,10 @@ class BAI_Slug_Queue {
         $job = get_option( self::OPTION_JOB, [] );
         $collision = (string) ( $job['collision'] ?? 'append_date' );
         $result = [];
+        $ok_count = 0; $fail_count = 0;
         foreach ( $ids as $id ) {
             $slug = (string) get_post_meta( $id, '_proposed_slug', true );
-            if ( $slug === '' ) { $result[$id] = [ 'ok' => false, 'message' => '无提案' ]; continue; }
+            if ( $slug === '' ) { $result[$id] = [ 'ok' => false, 'message' => '无提案' ]; $fail_count++; continue; }
             // collision check at apply time
             if ( self::slug_conflict( $slug, $id ) ) {
                 if ( $collision === 'append_date' ) {
@@ -403,19 +444,20 @@ class BAI_Slug_Queue {
                     if ( self::slug_conflict( $slug2, $id ) ) { $slug2 .= '-' . substr( (string) $id, -3 ); }
                     $slug = $slug2;
                 } else {
-                    $result[$id] = [ 'ok' => false, 'message' => '冲突未处理' ]; continue;
+                    $result[$id] = [ 'ok' => false, 'message' => '冲突未处理' ]; $fail_count++; continue;
                 }
             }
             $res = wp_update_post( [ 'ID' => $id, 'post_name' => $slug ], true );
-            if ( is_wp_error( $res ) ) { $result[$id] = [ 'ok' => false, 'message' => $res->get_error_message() ]; continue; }
+            if ( is_wp_error( $res ) ) { $result[$id] = [ 'ok' => false, 'message' => $res->get_error_message() ]; $fail_count++; continue; }
             update_post_meta( $id, '_generated_slug', $slug );
             update_post_meta( $id, '_slug_source', 'ai' );
             delete_post_meta( $id, '_proposed_slug' );
             delete_post_meta( $id, '_proposed_slug_raw' );
             delete_post_meta( $id, '_proposed_meta' );
             if ( method_exists( 'BAI_Slug_Settings', 'increment_counter' ) ) { BAI_Slug_Settings::increment_counter(); }
-            $result[$id] = [ 'ok' => true, 'slug' => $slug ];
+            $result[$id] = [ 'ok' => true, 'slug' => $slug ]; $ok_count++;
         }
+        if ( class_exists( 'BAI_Slug_Log' ) ) { BAI_Slug_Log::add( '批量应用完成：成功 ' . $ok_count . ' 条，失败 ' . $fail_count . ' 条' ); }
         wp_send_json_success( [ 'result' => $result ] );
     }
 
@@ -425,11 +467,14 @@ class BAI_Slug_Queue {
         if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => '无效令牌' ], 403 );
         $ids = isset( $_POST['ids'] ) && is_array( $_POST['ids'] ) ? array_map( 'intval', $_POST['ids'] ) : [];
         if ( empty( $ids ) ) wp_send_json_error( [ 'message' => '无选择' ], 400 );
+        $removed = 0;
         foreach ( $ids as $id ) {
             delete_post_meta( $id, '_proposed_slug' );
             delete_post_meta( $id, '_proposed_slug_raw' );
             delete_post_meta( $id, '_proposed_meta' );
+            $removed++;
         }
+        if ( class_exists( 'BAI_Slug_Log' ) ) { BAI_Slug_Log::add( '批量拒绝提案：' . (int) $removed . ' 条' ); }
         wp_send_json_success( [ 'result' => 'ok' ] );
     }
 
@@ -470,13 +515,14 @@ class BAI_Slug_Queue {
             $taxonomies = (array) ( $settings['enabled_taxonomies'] ?? [] );
         }
         $skip_ai = ! empty( $_POST['skip_ai'] );
+        $skip_user = ! empty( $_POST['skip_user'] );
         $ids = [];
         if ( ! empty( $taxonomies ) ) {
             $terms = get_terms( [ 'taxonomy' => $taxonomies, 'hide_empty' => false, 'fields' => 'ids' ] );
             if ( ! is_wp_error( $terms ) && is_array( $terms ) ) { $ids = array_map( 'intval', $terms ); }
         }
         update_option( self::TERMS_IDS, $ids, false );
-        $job = [ 'running' => true, 'batch' => (int) $batch, 'taxonomies' => $taxonomies, 'total' => (int) count( $ids ), 'index' => 0, 'processed' => 0, 'cursor' => 0, 'logs' => [], 'skip_ai' => $skip_ai ? 1 : 0, 'started_at' => time(), 'updated_at' => time(), 'finished_at' => 0 ];
+        $job = [ 'running' => true, 'batch' => (int) $batch, 'taxonomies' => $taxonomies, 'total' => (int) count( $ids ), 'index' => 0, 'processed' => 0, 'cursor' => 0, 'logs' => [], 'skip_ai' => $skip_ai ? 1 : 0, 'skip_user' => $skip_user ? 1 : 0, 'started_at' => time(), 'updated_at' => time(), 'finished_at' => 0 ];
         update_option( self::TERMS_JOB, $job, false );
         wp_send_json_success( self::terms_progress_payload() );
     }
@@ -507,11 +553,13 @@ class BAI_Slug_Queue {
             if ( is_wp_error( $term ) || ! $term ) { continue; }
             if ( ! in_array( (string) $term->taxonomy, (array) ( $job['taxonomies'] ?? [] ), true ) ) { continue; }
             if ( (int) ( $job['skip_ai'] ?? 0 ) === 1 && get_term_meta( $term_id, '_slug_source', true ) === 'ai' ) { continue; }
+            if ( (int) ( $job['skip_user'] ?? 0 ) === 1 && get_term_meta( $term_id, '_slug_source', true ) === 'user-edited' ) { continue; }
 
             $default_slug = sanitize_title( $term->name );
             if ( $term->slug !== '' && $term->slug !== $default_slug ) { continue; }
 
-            $slug = class_exists( 'BAI_Slug_Helpers' ) ? BAI_Slug_Helpers::request_slug( $term->name, $settings ) : '';
+            $ctx = class_exists( 'BAI_Slug_Helpers' ) && method_exists( 'BAI_Slug_Helpers', 'context_from_term' ) ? BAI_Slug_Helpers::context_from_term( $term ) : [];
+            $slug = class_exists( 'BAI_Slug_Helpers' ) ? BAI_Slug_Helpers::request_slug( $term->name, $settings, $ctx ) : '';
             if ( ! $slug ) { $job['logs'] = array_merge( [ '术语生成失败：' . $term->name ], (array) ( $job['logs'] ?? [] ) ); continue; }
             // ensure unique
             $unique = $slug; $n = 1;
@@ -545,5 +593,236 @@ class BAI_Slug_Queue {
             'done' => (bool) ( empty( $job['running'] ) && (int) ( $job['processed'] ?? 0 ) >= (int) count( $ids ) && (int) count( $ids ) > 0 ),
             'log' => (array) ( $job['logs'] ?? [] ),
         ];
+    }
+
+    public static function ajax_get_proposals() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $ids = isset( $_POST['ids'] ) && is_array( $_POST['ids'] ) ? array_map( 'intval', $_POST['ids'] ) : [];
+        if ( empty( $ids ) ) wp_send_json_success( [] );
+        $out = [];
+        foreach ( $ids as $id ) {
+            $slug = get_post_meta( $id, '_proposed_slug', true );
+            if ( is_string( $slug ) && $slug !== '' ) { $out[ (string) $id ] = $slug; }
+        }
+        wp_send_json_success( $out );
+    }
+
+    public static function ajax_count_proposals() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $post_types = isset( $_POST['post_types'] ) && is_array( $_POST['post_types'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['post_types'] ) ) : [];
+        global $wpdb;
+        $statuses = [ 'publish', 'future', 'draft', 'pending', 'private' ];
+        $st_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+        if ( empty( $post_types ) ) {
+            $post_types = get_post_types( [ 'public' => true ], 'names' );
+        }
+        $pt_placeholders = implode( ', ', array_fill( 0, count( $post_types ), '%s' ) );
+        $sql = $wpdb->prepare(
+            "SELECT COUNT(1) FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} m ON (m.post_id = p.ID AND m.meta_key = '_proposed_slug')
+             WHERE p.post_status IN ($st_placeholders)
+               AND p.post_type   IN ($pt_placeholders)",
+            array_merge( $statuses, $post_types )
+        );
+        $count = (int) $wpdb->get_var( $sql );
+        wp_send_json_success( [ 'count' => $count ] );
+    }
+
+    public static function ajax_count_pending() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $post_types = isset( $_POST['post_types'] ) && is_array( $_POST['post_types'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['post_types'] ) ) : [];
+        global $wpdb;
+        $statuses = [ 'publish', 'future', 'draft', 'pending', 'private' ];
+        $st_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+        if ( empty( $post_types ) ) { $post_types = get_post_types( [ 'public' => true ], 'names' ); }
+        $pt_placeholders = implode( ', ', array_fill( 0, count( $post_types ), '%s' ) );
+        $sql = $wpdb->prepare(
+            "SELECT COUNT(1) FROM {$wpdb->posts} p
+             LEFT JOIN {$wpdb->postmeta} m ON (m.post_id = p.ID AND m.meta_key = '_slug_source')
+             LEFT JOIN {$wpdb->postmeta} pr ON (pr.post_id = p.ID AND pr.meta_key = '_proposed_slug')
+             WHERE p.post_status IN ($st_placeholders)
+               AND p.post_type   IN ($pt_placeholders)
+               AND m.post_id IS NULL
+               AND pr.post_id IS NULL",
+            array_merge( $statuses, $post_types )
+        );
+        $count = (int) $wpdb->get_var( $sql );
+        wp_send_json_success( [ 'count' => $count ] );
+    }
+
+    public static function ajax_posts_list() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $ptype = isset( $_POST['ptype'] ) ? sanitize_text_field( wp_unslash( $_POST['ptype'] ) ) : 'post';
+        $attr  = isset( $_POST['attr'] ) ? sanitize_text_field( wp_unslash( $_POST['attr'] ) ) : '';
+        $s     = isset( $_POST['s'] ) ? sanitize_text_field( wp_unslash( $_POST['s'] ) ) : '';
+        $paged = max( 1, intval( $_POST['paged'] ?? 1 ) );
+        $per   = max( 5, min( 100, intval( $_POST['per_page'] ?? 20 ) ) );
+
+        $args = [
+            'post_type'      => $ptype,
+            'post_status'    => [ 'publish', 'future', 'draft', 'pending', 'private' ],
+            'orderby'        => 'ID',
+            'order'          => 'DESC',
+            'posts_per_page' => $per,
+            'paged'          => $paged,
+            's'              => $s,
+        ];
+        if ( $attr === 'ai' ) {
+            $args['meta_query'] = [ [ 'key' => '_slug_source', 'value' => 'ai', 'compare' => '=' ] ];
+        } elseif ( $attr === 'user-edited' ) {
+            $args['meta_query'] = [ [ 'key' => '_slug_source', 'value' => 'user-edited', 'compare' => '=' ] ];
+        } elseif ( $attr === 'proposed' ) {
+            $args['meta_query'] = [ [ 'key' => '_proposed_slug', 'compare' => 'EXISTS' ] ];
+        } elseif ( $attr === 'pending-slug' ) {
+            $args['meta_query'] = [
+                'relation' => 'AND',
+                [ 'key' => '_slug_source', 'compare' => 'NOT EXISTS' ],
+                [ 'key' => '_proposed_slug', 'compare' => 'NOT EXISTS' ],
+            ];
+        }
+
+        $q = new WP_Query( $args );
+        $items = [];
+        foreach ( $q->posts as $p ) {
+            $id   = (int) $p->ID;
+            $src  = get_post_meta( $id, '_slug_source', true );
+            $prop = get_post_meta( $id, '_proposed_slug', true );
+            $items[] = [
+                'id'       => $id,
+                'title'    => get_the_title( $id ),
+                'slug'     => (string) get_post_field( 'post_name', $id ),
+                'attr'     => (string) $src,
+                'proposed' => (string) $prop,
+            ];
+        }
+        wp_send_json_success( [ 'items' => $items, 'total' => (int) $q->found_posts, 'paged' => (int) $paged, 'per_page' => (int) $per ] );
+    }
+
+    // ---------- Terms list + single/batch actions for 分类法处理 ----------
+    public static function ajax_terms_list() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+
+        $tax = isset( $_POST['tax'] ) ? sanitize_text_field( wp_unslash( $_POST['tax'] ) ) : '';
+        $attr = isset( $_POST['attr'] ) ? sanitize_text_field( wp_unslash( $_POST['attr'] ) ) : '';
+        $search = isset( $_POST['s'] ) ? sanitize_text_field( wp_unslash( $_POST['s'] ) ) : '';
+        $paged = max( 1, intval( $_POST['paged'] ?? 1 ) );
+        $per   = max( 5, min( 100, intval( $_POST['per_page'] ?? 20 ) ) );
+
+        $args = [
+            'hide_empty'   => false,
+            'orderby'      => 'term_id',
+            'order'        => 'DESC',
+            'number'       => $per,
+            'offset'       => ( $paged - 1 ) * $per,
+            'count_total'  => true,
+        ];
+        if ( $tax && $tax !== 'all' ) { $args['taxonomy'] = [ $tax ]; }
+        if ( $search !== '' ) { $args['search'] = $search; }
+        if ( in_array( $attr, [ 'ai', 'user-edited', 'pending-slug', 'proposed' ], true ) ) {
+            if ( $attr === 'pending-slug' ) {
+                $args['meta_query'] = [
+                    'relation' => 'AND',
+                    [ 'key' => '_slug_source', 'compare' => 'NOT EXISTS' ],
+                    [ 'key' => '_proposed_slug', 'compare' => 'NOT EXISTS' ],
+                ];
+            } elseif ( $attr === 'proposed' ) {
+                $args['meta_query'] = [ [ 'key' => '_proposed_slug', 'compare' => 'EXISTS' ] ];
+            } else {
+                $args['meta_query'] = [ [ 'key' => '_slug_source', 'value' => $attr, 'compare' => '=' ] ];
+            }
+        }
+        $terms = get_terms( $args );
+        if ( is_wp_error( $terms ) ) {
+            wp_send_json_error( [ 'message' => $terms->get_error_message() ] );
+        }
+        $items = [];
+        foreach ( (array) $terms as $t ) {
+            if ( ! ( $t instanceof WP_Term ) ) continue;
+            $items[] = [
+                'id'       => (int) $t->term_id,
+                'name'     => (string) $t->name,
+                'taxonomy' => (string) $t->taxonomy,
+                'slug'     => (string) $t->slug,
+                'attr'     => (string) get_term_meta( $t->term_id, '_slug_source', true ),
+                'proposed' => (string) get_term_meta( $t->term_id, '_proposed_slug', true ),
+            ];
+        }
+        $total = 0;
+        if ( is_array( $terms ) && function_exists( 'wp_list_pluck' ) ) {
+            // When count_total true, get_terms() sets total via $GLOBALS['wp_object_cache'] internals; to avoid complexity, run a light count query
+            $args2 = $args; unset( $args2['number'], $args2['offset'] );
+            $args2['fields'] = 'count';
+            $total = (int) get_terms( $args2 );
+        }
+        wp_send_json_success( [ 'items' => $items, 'total' => $total, 'paged' => (int) $paged, 'per_page' => (int) $per ] );
+    }
+
+    public static function ajax_term_generate_one() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $term_id = intval( $_POST['term_id'] ?? 0 );
+        if ( ! $term_id ) wp_send_json_error( [ 'message' => 'invalid id' ], 400 );
+        $term = get_term( $term_id );
+        if ( is_wp_error( $term ) || ! $term ) wp_send_json_error( [ 'message' => 'not found' ], 404 );
+        $settings = class_exists( 'BAI_Slug_Settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        $ctx = class_exists( 'BAI_Slug_Helpers' ) && method_exists( 'BAI_Slug_Helpers', 'context_from_term' ) ? BAI_Slug_Helpers::context_from_term( $term ) : [];
+        $slug = class_exists( 'BAI_Slug_Helpers' ) ? BAI_Slug_Helpers::request_slug( $term->name, $settings, $ctx ) : '';
+        if ( ! $slug ) wp_send_json_error( [ 'message' => 'failed' ] );
+        update_term_meta( $term_id, '_proposed_slug', $slug );
+        wp_send_json_success( [ 'slug' => $slug ] );
+    }
+
+    public static function ajax_term_apply() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $ids = isset( $_POST['ids'] ) && is_array( $_POST['ids'] ) ? array_map( 'intval', $_POST['ids'] ) : [];
+        if ( empty( $ids ) ) wp_send_json_error( [ 'message' => 'no selection' ], 400 );
+        $result = [];
+        foreach ( $ids as $term_id ) {
+            $term = get_term( (int) $term_id );
+            if ( is_wp_error( $term ) || ! $term ) { $result[ $term_id ] = [ 'ok' => false, 'message' => 'not found' ]; continue; }
+            $slug = (string) get_term_meta( (int) $term_id, '_proposed_slug', true );
+            if ( $slug === '' ) { $result[ $term_id ] = [ 'ok' => false, 'message' => 'no proposal' ]; continue; }
+            // ensure unique under taxonomy
+            $unique = $slug; $n = 1;
+            while ( true ) {
+                $exists = term_exists( $unique, $term->taxonomy );
+                if ( ! $exists ) { break; }
+                $exists_id = is_array( $exists ) ? (int) ( $exists['term_id'] ?? 0 ) : (int) $exists;
+                if ( $exists_id === (int) $term_id ) { break; }
+                $unique = $slug . '-' . $n; $n++;
+            }
+            $res = wp_update_term( (int) $term_id, $term->taxonomy, [ 'slug' => $unique ] );
+            if ( is_wp_error( $res ) ) { $result[ $term_id ] = [ 'ok' => false, 'message' => $res->get_error_message() ]; continue; }
+            update_term_meta( (int) $term_id, '_slug_source', 'ai' );
+            delete_term_meta( (int) $term_id, '_proposed_slug' );
+            if ( class_exists( 'BAI_Slug_Settings' ) && method_exists( 'BAI_Slug_Settings', 'increment_counter' ) ) { BAI_Slug_Settings::increment_counter(); }
+            $result[ $term_id ] = [ 'ok' => true, 'slug' => $unique ];
+        }
+        wp_send_json_success( [ 'result' => $result ] );
+    }
+
+    public static function ajax_term_reject() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'denied' ], 403 );
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        if ( ! self::verify_nonce_flexible( $nonce ) ) wp_send_json_error( [ 'message' => 'invalid nonce' ], 403 );
+        $ids = isset( $_POST['ids'] ) && is_array( $_POST['ids'] ) ? array_map( 'intval', $_POST['ids'] ) : [];
+        if ( empty( $ids ) ) wp_send_json_error( [ 'message' => 'no selection' ], 400 );
+        foreach ( $ids as $term_id ) {
+            delete_term_meta( (int) $term_id, '_proposed_slug' );
+        }
+        wp_send_json_success( [ 'result' => 'ok' ] );
     }
 }

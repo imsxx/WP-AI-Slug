@@ -7,8 +7,9 @@ class BAI_Slug_Terms {
     }
 
     public function maybe_generate_term_slug( $term_id, $tt_id, $taxonomy ) {
-        $settings = BAI_Slug_Settings::get_settings();
-        if ( ! in_array( $taxonomy, (array) $settings['enabled_taxonomies'], true ) ) { return; }
+        $settings = class_exists( 'BAI_Slug_Settings' ) ? BAI_Slug_Settings::get_settings() : [];
+        if ( empty( $settings['auto_generate_terms'] ) ) { return; }
+        if ( ! in_array( (string) $taxonomy, (array) ( $settings['enabled_taxonomies'] ?? [] ), true ) ) { return; }
 
         // 若用户表单已提交 slug 则不覆盖（WP 已有 nonce 校验）
         if ( isset( $_POST['slug'] ) && ! empty( $_POST['slug'] ) ) { return; }
@@ -19,7 +20,8 @@ class BAI_Slug_Terms {
         $default_slug = sanitize_title( $term->name );
         if ( $term->slug !== $default_slug ) { return; }
 
-        $slug = BAI_Slug_Helpers::request_slug( $term->name, $settings );
+        $ctx  = method_exists( 'BAI_Slug_Helpers', 'context_from_term' ) ? BAI_Slug_Helpers::context_from_term( $term ) : [];
+        $slug = BAI_Slug_Helpers::request_slug( $term->name, $settings, $ctx );
         if ( ! $slug ) {
             if ( class_exists( 'BAI_Slug_Log' ) ) { BAI_Slug_Log::add( '未得到有效 slug', $term->name ); }
             return;
@@ -43,3 +45,4 @@ class BAI_Slug_Terms {
 }
 
 ?>
+

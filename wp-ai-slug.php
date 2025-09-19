@@ -56,6 +56,7 @@ add_action( 'plugins_loaded', function() {
     new BAI_Slug_Settings();
     new BAI_Slug_Posts();
     new BAI_Slug_Terms();
+    new BAI_Slug_Admin();
     if ( class_exists( 'BAI_Slug_Queue' ) ) { BAI_Slug_Queue::init(); }
     if ( class_exists( 'BAI_Slug_Bulk_Fixed' ) ) { new BAI_Slug_Bulk_Fixed(); }
     if ( class_exists( 'BAI_Slug_Manage_Fixed' ) ) { new BAI_Slug_Manage_Fixed(); }
@@ -76,3 +77,6 @@ add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), function ( $li
 } );
 
 ?>
+
+
+
